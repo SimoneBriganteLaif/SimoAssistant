@@ -9,6 +9,7 @@ aggiornato: 2026-06-08
 fonti: ["intervista /avvio 2026-06-08"]
 correlati:
   - "[[Team Blue]]"
+  - "[[Bonfiglioli Consulting — Pianificazione carico team]]"
 ---
 
 # Davide Leonescu
@@ -17,3 +18,6 @@ Membro di [[Team Blue]].
 
 - **Ruolo**: full stack developer junior, appena entrato.
 - Obiettivo: farlo crescere sin da subito.
+
+## Progetti
+- [[Bonfiglioli Consulting — Pianificazione carico team]]
