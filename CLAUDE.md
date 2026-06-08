@@ -63,6 +63,16 @@ Preferisci sempre *aggiornare* una nota esistente piuttosto che *duplicarla*.
 - `/avvio`    — inizializza la repo e mi intervista per "scaricare" conoscenza dalla testa.
 - `/cattura`  — processa una nuova informazione: estrai → classifica → controlla conflitti → salva → indicizza.
 - `/revisiona`— revisione di igiene: orfani, link rotti, tag fuori vocabolario, duplicati, contraddizioni.
+- `/scoperta` — routine proattiva (≥1 volta al giorno): esplora mail/Notion/calendario/repo recenti,
+  confronta con la KB e mi fa 3-5 domande su novità e discrepanze, poi salva dopo le mie risposte.
+
+## Scoperta proattiva
+Almeno una volta al giorno voglio che tu esegua `/scoperta`: leggi le fonti esterne (mail, Notion —
+soprattutto riunioni private, pagine progetti e task —, calendario, repo toccate di recente,
+facendo anche `pull`), estrai le novità della giornata e **fammi 3-5 domande** su ciò che non sai
+ancora o che collide con quanto già in `note/` (es. una persona che cambia team, lo stato di un
+progetto che cambia, un nuovo cliente). Non salvare nulla senza la mia conferma.
+La cadenza giornaliera va impostata con un **trigger schedulato** su Claude Code on the web.
 
 ## Rapporto con l'auto-memory di Claude Code
 L'auto-memory è **complementare**, non sostitutiva. La verità dei *contenuti* sta sempre in `note/`.
