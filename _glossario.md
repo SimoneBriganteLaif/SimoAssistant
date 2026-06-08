@@ -13,4 +13,5 @@ Usa SOLO questi tag nelle note. Per aggiungerne uno nuovo va prima approvato da 
 - riferimento
 
 ## Temi / persone / progetti
-(aggiungi qui i tag man mano che emergono, sempre dopo mia approvazione)
+- laif        # tutto ciò che riguarda l'azienda Laif
+- team        # il mio team (Team Blue) e i suoi membri
