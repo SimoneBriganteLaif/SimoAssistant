@@ -15,3 +15,4 @@ Usa SOLO questi tag nelle note. Per aggiungerne uno nuovo va prima approvato da 
 ## Temi / persone / progetti
 - laif        # tutto ciò che riguarda l'azienda Laif
 - team        # il mio team (Team Blue) e i suoi membri
+- cliente     # note che rappresentano un cliente di Laif

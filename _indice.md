@@ -30,12 +30,12 @@
 | Umbra — Improvement recommender e modulo marketing | progetto | lavoro, laif | note/progetti/umbra-recommender-marketing.md |
 | Casartelli — Industrial Knowledge | progetto | lavoro, laif | note/progetti/casartelli-industrial-knowledge.md |
 | LAIF Tech Stack | progetto | lavoro, laif | note/progetti/laif-tech-stack.md |
-| Andriani | area | lavoro, laif | note/aree/andriani.md |
-| Bonfiglioli Consulting | area | lavoro, laif | note/aree/bonfiglioli-consulting.md |
-| CRIF | area | lavoro, laif | note/aree/crif.md |
-| Jubatus | area | lavoro, laif | note/aree/jubatus.md |
-| Lamonea | area | lavoro, laif | note/aree/lamonea.md |
-| Nivi | area | lavoro, laif | note/aree/nivi.md |
-| Phoenix | area | lavoro, laif | note/aree/phoenix.md |
-| Umbra | area | lavoro, laif | note/aree/umbra.md |
-| Casartelli | area | lavoro, laif | note/aree/casartelli.md |
+| Andriani | area | lavoro, laif, cliente | note/aree/andriani.md |
+| Bonfiglioli Consulting | area | lavoro, laif, cliente | note/aree/bonfiglioli-consulting.md |
+| CRIF | area | lavoro, laif, cliente | note/aree/crif.md |
+| Jubatus | area | lavoro, laif, cliente | note/aree/jubatus.md |
+| Lamonea | area | lavoro, laif, cliente | note/aree/lamonea.md |
+| Nivi | area | lavoro, laif, cliente | note/aree/nivi.md |
+| Phoenix | area | lavoro, laif, cliente | note/aree/phoenix.md |
+| Umbra | area | lavoro, laif, cliente | note/aree/umbra.md |
+| Casartelli | area | lavoro, laif, cliente | note/aree/casartelli.md |

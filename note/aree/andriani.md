@@ -2,7 +2,7 @@
 titolo: Andriani
 id: andriani
 tipo: area
-tag: [lavoro, laif]
+tag: [lavoro, laif, cliente]
 stato: attivo
 creato: 2026-06-08
 aggiornato: 2026-06-08
