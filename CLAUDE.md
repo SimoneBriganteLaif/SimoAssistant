@@ -65,6 +65,8 @@ Preferisci sempre *aggiornare* una nota esistente piuttosto che *duplicarla*.
 - `/revisiona`— revisione di igiene: orfani, link rotti, tag fuori vocabolario, duplicati, contraddizioni.
 - `/scoperta` — routine proattiva (≥1 volta al giorno): esplora mail/Notion/calendario/repo recenti,
   confronta con la KB e mi fa 3-5 domande su novità e discrepanze, poi salva dopo le mie risposte.
+- `/approfondisci` — backfill profondo dalle riunioni storiche (a batch): estrae conoscenza dal
+  passato e mi fa molte domande sui punti incerti (le trascrizioni Notion sono di bassa qualità).
 
 ## Scoperta proattiva
 Almeno una volta al giorno voglio che tu esegua `/scoperta`: leggi le fonti esterne (mail, Notion —
