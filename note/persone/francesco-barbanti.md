@@ -12,10 +12,11 @@ correlati:
   - "[[Lorenzo Monni]]"
   - "[[Lorenzo Tonetta]]"
   - "[[Mattia Gualandi]]"
+  - "[[Matteo Scalabrini]]"
 ---
 
 # Francesco Barbanti
 
 - **Ruolo**: team leader di uno degli altri due team di [[Laif]] (oltre a [[Team Blue]]).
 - Il suo team è l'**ex team di [[Simone Brigante]]**: Simone ci ha lavorato e ha ancora progetti in corso con diversi suoi membri.
-- **Membri noti**: [[Lorenzo Monni]], [[Lorenzo Tonetta]], [[Mattia Gualandi]].
+- **Membri noti**: [[Lorenzo Monni]], [[Lorenzo Tonetta]], [[Mattia Gualandi]], [[Matteo Scalabrini]].

@@ -20,6 +20,7 @@
 | Lorenzo Tonetta | persona | lavoro, laif | note/persone/lorenzo-tonetta.md |
 | Mattia Gualandi | persona | lavoro, laif | note/persone/mattia-gualandi.md |
 | Dmitry Babich | persona | lavoro, laif | note/persone/dmitry-babich.md |
+| Matteo Scalabrini | persona | lavoro, laif | note/persone/matteo-scalabrini.md |
 | Andriani — Automazione ordini | progetto | lavoro, laif | note/progetti/andriani-automazione-ordini.md |
 | Bonfiglioli Consulting — Pianificazione carico team | progetto | lavoro, laif | note/progetti/bonfiglioli-consulting-pianificazione-carico.md |
 | CRIF — Supporto Team Silvia 2026 | progetto | lavoro, laif | note/progetti/crif-supporto-team-silvia.md |
@@ -30,6 +31,8 @@
 | Umbra — Improvement recommender e modulo marketing | progetto | lavoro, laif | note/progetti/umbra-recommender-marketing.md |
 | Casartelli — Industrial Knowledge | progetto | lavoro, laif | note/progetti/casartelli-industrial-knowledge.md |
 | LAIF Tech Stack | progetto | lavoro, laif | note/progetti/laif-tech-stack.md |
+| Prima Industrie — Virtual Assistant | progetto | lavoro, laif | note/progetti/prima-industrie-virtual-assistant.md |
+| Albini & Castelli — Gestione cantieri | progetto | lavoro, laif | note/progetti/albini-e-castelli-gestione-cantieri.md |
 | Andriani | area | lavoro, laif, cliente | note/aree/andriani.md |
 | Bonfiglioli Consulting | area | lavoro, laif, cliente | note/aree/bonfiglioli-consulting.md |
 | CRIF | area | lavoro, laif, cliente | note/aree/crif.md |
@@ -39,3 +42,6 @@
 | Phoenix | area | lavoro, laif, cliente | note/aree/phoenix.md |
 | Umbra | area | lavoro, laif, cliente | note/aree/umbra.md |
 | Casartelli | area | lavoro, laif, cliente | note/aree/casartelli.md |
+| Prima Industrie | area | lavoro, laif, cliente | note/aree/prima-industrie.md |
+| Albini & Castelli | area | lavoro, laif, cliente | note/aree/albini-e-castelli.md |
+| Modo di lavorare — call 1:1 verticali per progetto | concetto | lavoro, decisione, preferenza | note/concetti/modo-di-lavorare-call-verticali.md |

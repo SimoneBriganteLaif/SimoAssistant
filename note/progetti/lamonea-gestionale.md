@@ -24,3 +24,4 @@ correlati:
 - **Referenti interni**: [[Luca Stendardo]], [[Mattia Gualandi]]
 - **Descrizione**: App custom sul gestionale (ordini, preventivi / CRM, magazzino, gare). Rilasci frequenti, SAL periodici. Molte micro-richieste operative continue (attenzione allo scope creep).
 - **Referente cliente**: Andrea Spilli (a.spilli@lamonea.com), molto operativo.
+- **Obiettivo**: **chiusura entro fine giugno 2026**. Deploy in produzione (mai fatto finora) previsto entro giovedì, con ETL. Da delimitare lo scope con il cliente (escludere portale B2B e richieste fuori budget).

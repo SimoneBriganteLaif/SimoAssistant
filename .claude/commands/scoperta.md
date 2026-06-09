@@ -16,7 +16,8 @@ Per usare gli strumenti MCP carica prima gli schemi con ToolSearch (keyword "out
   scadenze, cambi di persone. Salta rumore e notifiche automatiche (statuspage, bot ore/ticket).
 - **Notion** (alta priorità): pagine modificate di recente, in particolare:
   - **Riunioni Private** (cosa è stato discusso/deciso);
-  - **pagine dei progetti** e il **DB Progetti** (status, % done, team, scadenze, nuovi progetti);
+  - **pagine dei progetti** e il **DB Progetti** (status, % done, team, nuovi progetti).
+    NB: le **date di fine** dei progetti su Notion NON sono affidabili → **ignorale**, non trattarle come scadenze;
   - **Task** aperti o appena chiusi.
 - **Calendario**: riunioni e scadenze dei prossimi giorni.
 - **Repo (GitHub)**: per le repository accessibili fai `git fetch`/`pull` e guarda commit/branch
