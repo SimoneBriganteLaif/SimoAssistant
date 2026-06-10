@@ -6,7 +6,7 @@ tag: [lavoro, laif]
 stato: attivo
 creato: 2026-06-08
 aggiornato: 2026-06-10
-fonti: ["Notion DB Progetti", "intervista /avvio 2026-06-08", "approfondimento riunioni 15/05 (Notion) 2026-06-09"]
+fonti: ["Notion DB Progetti", "intervista /avvio 2026-06-08", "approfondimento riunioni 15/05 (Notion) 2026-06-09", "scoperta 2026-06-10 (mail WoW + incidente ETL)"]
 correlati:
   - "[[Simone Brigante]]"
   - "[[Team Blue]]"
@@ -44,7 +44,7 @@ Nuove pagine in-app per gestire le promozioni marketing del cliente (oggi via Ex
 
 ## Aggiornamenti (8-10/06)
 - **Incidente ETL risolto in giornata (8/06)**: file output mancante per errore 421/timeout sul download di un CSV da 22 MB (primo file così grande dal nuovo server); fix rilasciato, connessione ora robusta per file grandi (segnalazione di Daniele Zandrini, fix di Daniele Dalle Nogare).
-- **Allineamento "Promozioni WoW" a rischio stallo**: Bezzi (Adriano) indisponibile il 19/06, Alessandra Olivanti propone inizio luglio; Simone ha avvertito che rimandare a luglio **blocca di nuovo gli sviluppi** e ha proposto mer 17/06 (registrata per Daniele) o ven 19/06 solo con Alessandra. In attesa di conferma.
+- **Allineamento "Promozioni WoW" — rischio stallo**: Alessandra Olivanti spingeva per inizio luglio, Bezzi (Adriano) ha un impegno la mattina del 19/06; **probabile call il 19/06**. Simone: rimandare a luglio **blocca di nuovo gli sviluppi** → obiettivo **evitare lo stallo a tutti i costi** (niente slittamento).
 - Task aperti (Daniele): import listino/budget/fatturato fornitori e storico promozioni (target 12/06).
 
 ## Referenti cliente

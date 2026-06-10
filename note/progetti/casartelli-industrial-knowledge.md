@@ -24,7 +24,7 @@ correlati:
 - **Cliente**: [[Casartelli]] (Casartelli Antonio) — acciaieria a **Lecco**, ~50 M€ fatturato (2024), pezzi in acciaio per automotive (Volvo, Iveco, Fiat), conduzione familiare. Cliente entusiasta, promette molto lavoro.
 - **Stato (Notion)**: In Analisi → avviato (kick-off fatti)
 - **Team leader**: [[Simone Brigante]]
-- **Team operativo**: [[Simone Brigante]] + [[Luca Stendardo]]; per la parte **GenAI/KB** entrerà [[Carlo Venditti]] **o** [[Tancredi Bosi]] (orientamento su Carlo, decisione rinviata). [[Dmitry Babich]] è il **sales** che ha venduto il progetto (con [[Marco Vita]]): partecipa ai kick-off ma **non è operativo**. Eventualmente [[Davide Leonescu]].
+- **Team operativo**: lo seguirà [[Luca Stendardo]] (confermato 10/06; [[Simone Brigante]] come TL); per la parte **GenAI/KB** entrerà a supporto [[Carlo Venditti]] **o** [[Tancredi Bosi]] — decisione **tra qualche settimana** (orientamento attuale su **Tancredi**). [[Dmitry Babich]] è il **sales** che ha venduto il progetto (con [[Marco Vita]]): partecipa ai kick-off ma **non è operativo**. Eventualmente [[Davide Leonescu]].
 - **Origine del lead**: stesso contatto di [[Prima Industrie — Virtual Assistant]] — consulente ex-BCG (marito di "Maria", ex collega di Ammagamma).
 
 ## Scope — due filoni paralleli
@@ -35,7 +35,7 @@ correlati:
 - Percezione cliente: prezzo "quasi da startup", ma manutenzione percepita alta.
 
 ## Tecnica
-- **SAP in sola lettura** via IP statico e utenza dedicata (accesso avviato da Babich offline); **SSO Office 365**.
+- **SAP in sola lettura** via IP statico e utenza dedicata (accesso da avviare offline prima della visita, per analizzare i dati in anticipo); **SSO Office 365**.
 - In corso lato cliente una **bonifica dei codici pezzi SAP** (codici vecchi rimappati — da chiarire).
 
 ## Tempistiche

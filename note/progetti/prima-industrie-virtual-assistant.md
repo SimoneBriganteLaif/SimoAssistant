@@ -43,10 +43,10 @@ Assistente virtuale / knowledge assistant su **~1,5 TB di documenti (~300.000 fi
 - Parsing su **EC2** (~20 min): ~**17.000 file** processati, solo ~41 errori (estrazione oltre le aspettative).
 - **Classificazione a Tier**: **A** = file core/manuali, estratti completi (~5GB testo); **B** = forse utili, solo prime 3 pagine come riferimento; **C** = scartati (~700GB: foto iPhone, dump iCloud, ridondanti). OCR su una parte dei Tier B (~20-50€); Tier C escluso (costo proibitivo).
 - **Repository ufficiale = bucket S3**. UX a **filtri** (segmento/tipo/modello + serial number) per restringere alla macchina ("cono di visibilità").
-- **UAT**: inizialmente prevista con start 15-17 giugno 2026; a inizio giugno le date risultano **in ridefinizione** (tema da non approfondire per ora, su indicazione di Simone 10/06).
+- **UAT**: piano definito nella call 10/06 → **UAT interno** la **settimana del 22/06** (verifica della knowledge col team prima dell'apertura), poi **apertura agli utenti esterni**. Vincolo: ferie Finlandia da metà luglio (non slittare troppo). *(start iniziale 15-17/06 superato.)*
 
 ## Aggiornamenti (8-10/06)
-- **Ingestion pronta ma bloccata dai permessi AWS Bedrock**: richiesti l'8/06 a Prima Power (InvokeModel & co.), abilitazione scalata internamente dal cliente; il processamento massivo parte appena sbloccato.
+- **Ingestion bloccata da permessi AWS Bedrock — sbloccata solo parzialmente (10/06)**: richiesti l'8/06 a Prima Power; il 10/06 **Claudio Vitiello** ha settato i permessi (InvokeModel & co.), ma mancano ancora `ListFoundationModels` / `ListInferenceProfiles` (impediscono di verificare quali modelli sono abilitati). Processamento massivo a sblocco completo. Seguito da Simone.
 - **Dati PST** trasferiti tramite il fornitore terzo **Volos**: Europa completato (file su SFTP LAIF), Cina risolto, USA in arrivo. Ticket Jira integrati parzialmente; classificazione work order in attesa di dato pulito da un software qualità esterno.
 - **UI/UX (call 10/06)**: logo "**Prima Power**" (non Prima Industrie); filtro gerarchico a cascata famiglia→tipo→modello (non obbligatorio); finestra chat più larga.
 - **Feedback**: stelline di accuratezza mantenute per continuità col benchmark del pilota + feedback negativo guidato obbligatorio (info mancanti / errate / fraintendimento) + export massivo.

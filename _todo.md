@@ -8,10 +8,10 @@
 - [ ] **Feedback Bounty** — se prende forma, valutare una nota-concetto dedicata (oggi è una riga in [[LAIF Tech Stack]]).
 
 ## Fili aperti (scoperta 10/06)
-- [ ] **Sebi Group** — esito vendita: comprano solo l'estrazione o anche l'app? → [[Sebi Group — Acquisizione database/mailing e app export]]
-- [ ] **Casartelli** — decisione finale Carlo vs Tancredi per la parte GenAI/KB. → [[Casartelli — Industrial Knowledge]]
-- [ ] **Prima Industrie** — riprendere il tema **UAT/date** quando si chiarisce (per ora in pausa su richiesta di Simone, 10/06). → [[Prima Industrie — Virtual Assistant]]
-- [ ] **Umbra** — conferma della call WoW (17 o 19/06) e rischio stallo sviluppi. → [[Umbra — Improvement recommender e modulo marketing]]
+- [ ] **Sebi Group** — esito vendita: comprano solo l'estrazione o anche l'app? (Bonetti punta al "contratto unico": estrazione + progetto + formazione). → [[Sebi Group — Acquisizione database/mailing e app export]]
+- [ ] **Casartelli** — supporto GenAI/KB: Carlo o Tancredi, da decidere **tra qualche settimana** (orientamento Tancredi). Lo segue [[Luca Stendardo]]. → [[Casartelli — Industrial Knowledge]]
+- [ ] **Prima Industrie** — monitorare lo **sblocco completo di Bedrock** (mancano `ListFoundationModels`/`ListInferenceProfiles`) e l'esito dell'**UAT interno** (settimana del 22). → [[Prima Industrie — Virtual Assistant]]
+- [ ] **Umbra** — conferma della call WoW del **19/06** ed **evitare lo stallo** (no slittamento a luglio). → [[Umbra — Improvement recommender e modulo marketing]]
 
 ## Dubbi minori (quando capita)
 - [ ] **Andriani** — disambiguare i due "Rizzi" (referente ARCA vs ordini Italia); "Dino" = quale? Significato esatto di OC/OCF.
