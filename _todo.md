@@ -14,9 +14,6 @@
 - [ ] **Umbra** — conferma della call WoW (17 o 19/06) e rischio stallo sviluppi. → [[Umbra — Improvement recommender e modulo marketing]]
 
 ## Dubbi minori (quando capita)
-- [ ] **Alberto Finelli** — ospite in LAIF il 17/06 (invito a tutta l'azienda, da gmail personale): chi è? (candidato? speaker?)
-- [ ] **Team building** — 16/06 a Bologna vs "il 25" citato al kick-off Casartelli: quale data vale (o sono due eventi)?
-- [ ] **Meeting 18/06 Mordenti+Simone "Notion, progetti e CRM — cosa ne resta?"** — esito rilevante per Wolico/strumenti interni: catturarlo.
 - [ ] **Andriani** — disambiguare i due "Rizzi" (referente ARCA vs ordini Italia); "Dino" = quale? Significato esatto di OC/OCF.
 - [ ] **Phoenix** — cos'è "Svitla" (target upstream; forse "Svicom"?).
 - [ ] **Lamonea** — ragione sociale dell'azienda "133" (distributore medicale).

@@ -11,6 +11,7 @@
 - **18/06** — "Sharing Knowledge: Project Management" (Pinelli, tutta LAIF); 1:1 Mordenti "Notion, progetti e CRM — cosa ne resta?"; presentazione **PM & Staffing** in zona.
 - **~19/06** — Jubatus: invio mail AWS SES + deploy PROD (target).
 - **22-23/06** — visita on-site Casartelli a **Lecco**; UAT Prima in zona (date in ridefinizione — tema in pausa).
+- **25-28/06** — **team building** LAIF (poco impattante sul lavoro, ma blocca le agende).
 - **fine giugno** — chiusura Lamonea (obiettivo interno); estrazione dati [[Sebi Group]]; fatturazione Umbra; tranche Andriani; passaggio consegne Bonfiglioli.
 
 ## Progetti attivi del Team Blue
