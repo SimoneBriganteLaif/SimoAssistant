@@ -5,8 +5,8 @@ tipo: persona
 tag: [lavoro, laif, team]
 stato: attivo
 creato: 2026-06-08
-aggiornato: 2026-06-08
-fonti: ["intervista /avvio 2026-06-08"]
+aggiornato: 2026-06-10
+fonti: ["intervista /avvio 2026-06-08", "scoperta 2026-06-10"]
 correlati:
   - "[[Laif]]"
   - "[[Team Blue]]"
@@ -29,3 +29,4 @@ Io (proprietario di questa base di conoscenza).
 - Sta lavorando molto su **[[Jubatus — Supporto sviluppo|Jubatus]]**, **[[Nivi — Automazione Risposta Mail|Nivi]]** e **[[Andriani — Automazione ordini|Andriani]]**.
 - Su **[[Prima Industrie — Virtual Assistant|Prima Industrie]]** si tiene **volutamente defilato** (vuole conoscere, non gestire).
 - Al momento segue (per passione) tutte le attività dello **stack interno** ([[LAIF Tech Stack]]); vuole concentrarsi di più su **[[Merlino]]**, in vista della call di presentazione delle nuove modalità di **project management**.
+- Da giugno: operativo sul kick-off di **[[Casartelli — Industrial Knowledge]]** (con [[Luca Stendardo]]) e sul deploy DEV di Jubatus; porta avanti **in background** l'estrazione email per [[Sebi Group — Acquisizione database/mailing e app export|Sebi Group]].

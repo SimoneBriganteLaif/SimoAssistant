@@ -55,6 +55,10 @@
 | Merlino | concetto | lavoro, laif, interno | note/concetti/merlino.md |
 | Sistema PM & Staffing — roadmap interna Q2 2026 | fatto | lavoro, laif, decisione, organizzazione | note/fatti/sistema-pm-staffing.md |
 | Alessandro Grotti | persona | lavoro, laif | note/persone/alessandro-grotti.md |
-| Helia | progetto | lavoro, laif | note/progetti/helia.md |
+| Helia | area | lavoro, laif | note/aree/helia.md |
 | Angelo | persona | lavoro, laif | note/persone/angelo.md |
 | Standard caselle email per cliente | concetto | lavoro, laif, interno | note/concetti/standard-email-clienti.md |
+| Sebi Group | area | lavoro, laif, cliente | note/aree/sebi-group.md |
+| Sebi Group — Acquisizione database/mailing e app export | progetto | lavoro, laif | note/progetti/sebi-group-acquisizione-database-e-app.md |
+| Roberto Bonetti | persona | lavoro, laif | note/persone/roberto-bonetti.md |
+| Letizia Maccariello | persona | lavoro, laif | note/persone/letizia-maccariello.md |

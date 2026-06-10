@@ -5,8 +5,8 @@ tipo: fatto
 tag: [lavoro, laif, decisione, organizzazione]
 stato: attivo
 creato: 2026-06-09
-aggiornato: 2026-06-09
-fonti: ["approfondimento riunione privata 11/05 'Pianificazione Team e Crescita' (Notion) 2026-06-09"]
+aggiornato: 2026-06-10
+fonti: ["approfondimento riunione privata 11/05 'Pianificazione Team e Crescita' (Notion) 2026-06-09", "riunione tecnica 09/06 (Notion)"]
 correlati:
   - "[[Laif]]"
   - "[[Simone Brigante]]"
@@ -21,4 +21,5 @@ correlati:
 - **Fatturato target 2027**: **3 M€**.
 - **EBITDA** target 2026: ~20%.
 - **Logica budget vs target**: il **budget** è fisso a inizio anno e non si sovrascrive mai; il **target** si rivede trimestralmente (monitoraggio target vs budget cumulato). Reverse engineering del fatturato per **FTE** (~115K ricavi/FTE 2026).
+- **Consuntivo maggio 2026** (riunione 9/06): **147K€ realizzati vs 182K€ target**; cumulato previsto a giugno **766K€ vs 879K€**; una fattura da 18K€ slitta a luglio. Priorità dichiarata: profittabilità.
 - **Ufficio**: acquisto in corso (notaio in fissaggio); annuncio previsto al team building. *Riservato.*

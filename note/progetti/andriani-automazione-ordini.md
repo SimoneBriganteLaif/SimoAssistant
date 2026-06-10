@@ -5,7 +5,7 @@ tipo: progetto
 tag: [lavoro, laif]
 stato: attivo
 creato: 2026-06-08
-aggiornato: 2026-06-09
+aggiornato: 2026-06-10
 fonti: ["Notion DB Progetti", "intervista /avvio 2026-06-08", "approfondimento riunioni 11/05 (Notion) 2026-06-09"]
 correlati:
   - "[[Simone Brigante]]"
@@ -58,6 +58,11 @@ App preesistente Andriani con un tab "ordini" (ordini storici importati), da rin
 - **Inserimento da agenti**: se attivato copre ~**80%** degli ordini; filtra per **listino cliente**; gestione automatica **OC/OCF** (avvisa se misto → da scorporare).
 - **ARCA Produzione vs Test**: ambienti distinti; LAIF legge il Test → serve sync dei dati (es. note destinazioni) dal Produzione.
 - Clienti/destinazioni: Conad, Esselunga, Coop (anche estere), Pac, Mercadona, Maxidì.
+
+## Aggiornamenti (9-10/06)
+- **10/06 nuovo rilascio** su sequencing-dev.app.laifgroup.com: sezione "**Gestisci Gamme**" nel menù principale con caricamento da Excel (comunicato da Lorenzo Monni ad Andriani).
+- **Aggiornamento gamme da tabella** configurato; due divergenze coi dati ARCA emerse il 9/06: **codici cliente mancanti** (disallineamento dev/prod, clienti inseriti di recente) e **listini cliente non aggiornati** → se ne parla al **SAL di venerdì 12/06**.
+- In validazione (12/06, Monni): conferma ordini automatici via mail, gestione gamme, import gamme da Excel; (Tancredi): parsing ordini Excel, multi-PDF per mail. In attesa cliente: import automatico ordini via API "Mercadona".
 
 ## Referenti cliente
 - **Luigi Di Lauro** (l.dilauro@andrianispa.com) — responsabile del progetto lato cliente (è chi ha chiesto il Gantt).

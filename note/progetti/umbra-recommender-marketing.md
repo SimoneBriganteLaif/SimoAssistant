@@ -5,7 +5,7 @@ tipo: progetto
 tag: [lavoro, laif]
 stato: attivo
 creato: 2026-06-08
-aggiornato: 2026-06-09
+aggiornato: 2026-06-10
 fonti: ["Notion DB Progetti", "intervista /avvio 2026-06-08", "approfondimento riunioni 15/05 (Notion) 2026-06-09"]
 correlati:
   - "[[Simone Brigante]]"
@@ -42,9 +42,14 @@ Nuove pagine in-app per gestire le promozioni marketing del cliente (oggi via Ex
 - La piattaforma è **supporto decisionale** per la marketing: l'AI suggerisce → Alessandra decide e inserisce su **AS400** (gestionale legacy cliente) → i dati rientrano il giorno dopo. Il Gantt è soprattutto **visualizzazione**.
 - Problema: AS400 conserva solo le promo attive → serve un modo per **conservare lo storico** (necessario per l'anti-ripetizione).
 
+## Aggiornamenti (8-10/06)
+- **Incidente ETL risolto in giornata (8/06)**: file output mancante per errore 421/timeout sul download di un CSV da 22 MB (primo file così grande dal nuovo server); fix rilasciato, connessione ora robusta per file grandi (segnalazione di Daniele Zandrini, fix di Daniele Dalle Nogare).
+- **Allineamento "Promozioni WoW" a rischio stallo**: Bezzi (Adriano) indisponibile il 19/06, Alessandra Olivanti propone inizio luglio; Simone ha avvertito che rimandare a luglio **blocca di nuovo gli sviluppi** e ha proposto mer 17/06 (registrata per Daniele) o ven 19/06 solo con Alessandra. In attesa di conferma.
+- Task aperti (Daniele): import listino/budget/fatturato fornitori e storico promozioni (target 12/06).
+
 ## Referenti cliente
-- **Adriano** — referente di **progetto principale** lato cliente.
-- **Alessandra** — referente **marketing** (gestisce oggi le promozioni; userà le pagine WoW).
+- **Adriano Bezzi** — referente di **progetto principale** lato cliente.
+- **Alessandra Olivanti** — referente **marketing** (gestisce oggi le promozioni; userà le pagine WoW).
 - **Daniele Zandrini** (IT, @umbra.it) — referente tecnico.
 
 ## Glossario di dominio (Umbra)

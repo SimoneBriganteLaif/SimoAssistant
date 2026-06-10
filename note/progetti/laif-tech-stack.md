@@ -5,7 +5,7 @@ tipo: progetto
 tag: [lavoro, laif, interno]
 stato: attivo
 creato: 2026-06-08
-aggiornato: 2026-06-09
+aggiornato: 2026-06-10
 fonti: ["Notion DB Progetti", "intervista /avvio 2026-06-08", "approfondimento riunioni 12-13/05 (Notion) 2026-06-09"]
 correlati:
   - "[[Simone Brigante]]"
@@ -35,5 +35,6 @@ Iniziativa trasversale sullo **stack interno** di Laif. Convenzione: **le repo c
 - **Monitoring/alerting** su backend (ECS) e DB (RDS): problema critico DB pieno → app down senza notifica. Approccio: metriche CloudWatch + alert, integrazione su [[Wolico]].
 - **PyPI interno** self-hosted per distribuire librerie comuni (client Bedrock, parser).
 - Allocazione di 1-2 risorse dedicate allo stack interno (focus previsto in estate).
-- **Team stack interno dedicato**: proposta (Simone + [[Carlo Venditti]]) di **2 FTE full-time senza delivery**, esperimento 2-4 mesi **da agosto**, su monitoring/observability/migrazioni/[[Laif Factory]] — da proporre ai founder.
+- **Team stack interno dedicato**: proposta (Simone + [[Carlo Venditti]]) di **2 FTE full-time senza delivery**, esperimento 2-4 mesi **da agosto**, su monitoring/observability/migrazioni/[[Laif Factory]] — da proporre ai founder. Dal 1:1 dell'8/06: Carlo è il candidato concreto (oggi ~25h/settimana su LAIF; Simone vuole proporre a [[Marco Vita]] 30-35h con tariffa migliorata); Simone raccoglie dati di marginalità per il business case; anti-pattern da evitare: team innovation in silos (esperienza Ammagamma).
+- **Nuovo meeting ricorrente "Team Stack Interno"** dal 10/06 (Simone, Frasca, Piscioneri, Pinelli, Venditti, Scalabrini, Tonetta, Miani): gestione issue/proposal/roadmap dello stack interno.
 - **Feedback Bounty** (proposta di Carlo): meccanismo a incentivi per condividere insight/lessons-learned cross-team (integrazioni sottostimate, stime sbagliate); primo passo = **retrospettiva di fine commessa**.

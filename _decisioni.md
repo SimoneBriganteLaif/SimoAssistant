@@ -3,6 +3,9 @@
 > Registro **trasversale** delle decisioni chiave (datate, con progetto/area). Diverso da `_log.md` (che traccia le modifiche alla KB). Append-only; il dettaglio sta nelle note collegate.
 
 ## 2026-06 (giugno)
+- **[Casartelli]** Team operativo iniziale: **Simone + Luca** ([[Dmitry Babich]] è solo sales); per la parte GenAI/KB entrerà **Carlo o Tancredi** (orientamento su Carlo, deciso il 10/06 di rinviare la scelta). → [[Casartelli — Industrial Knowledge]]
+- **[Jubatus]** Refactor del data model (10/06): via `Recipients`/`Contacts`/`Mailbox`, categorie sulle singole mail, fusione in `Customer`; nessun dato in prod, si ricrea tutto. → [[Jubatus — Supporto sviluppo]]
+- **[Sebi Group]** Nuovo prospect: design già venduto; ora in vendita estrazione email (Simone la fa in background) + app (non ancora comprata); puntare al contratto unico. → [[Sebi Group — Acquisizione database/mailing e app export]]
 - **[Lamonea]** Deploy in produzione (mai fatto prima) target 11/06; chiusura obiettivo interno **fine giugno**; scope congelato (no B2B/Amazon). → [[Lamonea — Gestionale / CRM]]
 - **[Jubatus/Ubatus]** Il cliente gestirà invio+ricezione mail su **AWS SES** → pipeline mail da adattare. → [[Jubatus — Supporto sviluppo]]
 - **[Umbra]** Promozioni WoW = supporto decisionale (no AI che decide); i dati restano su AS400. → [[Umbra — Improvement recommender e modulo marketing]]

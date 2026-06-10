@@ -1,40 +1,42 @@
 # Overview — stato operativo
 
-> Pagina di **sintesi viva** (stile wiki): da cui partire per "fare il segretario". Aggiornare quando cambiano stati/scadenze. Ultimo aggiornamento: **2026-06-09**.
+> Pagina di **sintesi viva** (stile wiki): da cui partire per "fare il segretario". Aggiornare quando cambiano stati/scadenze. Ultimo aggiornamento: **2026-06-10**.
 > Le schede di dettaglio stanno in `note/`; le decisioni chiave in `_decisioni.md`.
 
 ## Scadenze imminenti (giugno 2026)
-- **10/06** — kick-off interno [[Casartelli — Industrial Knowledge]].
-- **11/06** — deploy produzione [[Lamonea — Gestionale / CRM]] + call cliente; kick-off cliente Casartelli.
-- **15-17/06** — UAT [[Prima Industrie — Virtual Assistant]].
-- **16/06** — sessione WoW [[Umbra — Improvement recommender e modulo marketing]] (Alessandra); team building a Bologna (Simone assente, evento a Roma).
-- **16-18/06** — trasferta [[Nivi — Automazione Risposta Mail]] (Federico).
-- **~18/06** — presentazione **PM & Staffing** (Simone + [[Davide Miani]] + [[Francesco Barbanti]]); Simone assente 18-19.
-- **fine giugno** — chiusura Lamonea (obiettivo interno); fatturazione Umbra ~40k€; tranche Andriani; passaggio consegne Bonfiglioli.
+- **11/06** — deploy produzione [[Lamonea — Gestionale / CRM]] + SAL con Mathias Lamonea (congelamento scope); **kick-off cliente [[Casartelli — Industrial Knowledge]]** (Teams); review staffing Team Blue.
+- **12/06** — SAL [[Andriani — Automazione ordini]] (divergenze gamme/listini ARCA); recap status Nivi + lista upsell.
+- **16/06** — giornata on-site [[Nivi — Automazione Risposta Mail]] a Firenze (Simone, Mordenti, Federico) — upsell dashboard KPI.
+- **17 o 19/06** — allineamento WoW [[Umbra — Improvement recommender e modulo marketing]] da confermare (rischio stallo sviluppi se slitta a luglio).
+- **18/06** — "Sharing Knowledge: Project Management" (Pinelli, tutta LAIF); 1:1 Mordenti "Notion, progetti e CRM — cosa ne resta?"; presentazione **PM & Staffing** in zona.
+- **~19/06** — Jubatus: invio mail AWS SES + deploy PROD (target).
+- **22-23/06** — visita on-site Casartelli a **Lecco**; UAT Prima in zona (date in ridefinizione — tema in pausa).
+- **fine giugno** — chiusura Lamonea (obiettivo interno); estrazione dati [[Sebi Group]]; fatturazione Umbra; tranche Andriani; passaggio consegne Bonfiglioli.
 
 ## Progetti attivi del Team Blue
 | Progetto | Chi | Stato (giu 2026) |
 |---|---|---|
-| [[Andriani — Automazione ordini]] | [[Lorenzo Monni]] (FE+ETL), [[Tancredi Bosi]] (parsing) | Wizard ok; ETL bloccato dalle API ARCA; parsing PDF in modalità interattiva; inserimento da agenti in test |
-| [[Bonfiglioli Consulting — Pianificazione carico team]] | [[Lorenzo Tonetta]], [[Davide Leonescu]] | D-CAP, 38gg/5; chiusura a settembre |
-| [[Lamonea — Gestionale / CRM]] | [[Luca Stendardo]] (+ [[Mattia Gualandi]] magazzino) | Deploy prod 11/06; chiusura obiettivo fine giugno; ETL a livelli |
-| [[Nivi — Automazione Risposta Mail]] | [[Federico Frasca]], [[Tancredi Bosi]] | App "Live Pro"; dedup fatta; migrazione PST; concessioni autostradali |
-| [[Jubatus — Supporto sviluppo]] | [[Federico Frasca]] | Invio+ricezione mail su AWS SES; progetto "palestra" di Federico |
-| [[Phoenix — Knowledge Base]] | [[Federico Frasca]], [[Tancredi Bosi]], [[Marco Pinelli]] | DS PR, refactor chat, upstream→"Svitla" |
-| [[CRIF — Supporto Team Silvia 2026]] | [[Daniele Dalle Nogare]] (data), [[Tancredi Bosi]], [[Matteo Scalabrini]] (100%) | In espansione (60-70k€); filone Tancredi quasi chiuso |
-| [[Umbra — Improvement recommender e modulo marketing]] | [[Daniele Dalle Nogare]] | WoW + Budget Fornitore; fatturazione ~40k€ giugno |
-| [[Casartelli — Industrial Knowledge]] | Simone + [[Luca Stendardo]] (+ Tancredi spot) | Pilot, acciaieria Lecco; kick-off 10-11/06 |
-| [[Prima Industrie — Virtual Assistant]] | TL [[Marco Pinelli]], op. [[Carlo Venditti]] | UAT 15-17/06; Simone volutamente defilato |
-| [[Albini & Castelli — Gestione cantieri]] | Simone | In manutenzione |
+| [[Andriani — Automazione ordini]] | [[Lorenzo Monni]] (FE+ETL), [[Tancredi Bosi]] (parsing) | Rilasciata "Gestisci Gamme" (10/06); divergenze dati ARCA al SAL 12/06; ETL ancora bloccato dalle API ARCA |
+| [[Bonfiglioli Consulting — Pianificazione carico team]] | [[Lorenzo Tonetta]], [[Davide Leonescu]] | D-CAP, ~14,5gg/38 consuntivate; Leonescu operativo (Tailscale/DWH); Simone molto attivo su FE/BE/ETL |
+| [[Lamonea — Gestionale / CRM]] | [[Luca Stendardo]] (+ [[Mattia Gualandi]] magazzino) | Rilasciata scrittura su 3 ditte (8/06); deploy prod + SAL scope-freeze 11/06; chiusura obiettivo fine giugno |
+| [[Nivi — Automazione Risposta Mail]] | [[Federico Frasca]], [[Tancredi Bosi]] | Tecnicamente pronto per il live; ticket #17 mail mancanti; on-site Firenze 16/06 + upsell dashboard |
+| [[Jubatus — Supporto sviluppo]] | [[Federico Frasca]] (+ Simone su infra) | Pipeline deployata in DEV (9/06); refactor data model; blocco permessi S3 (Jonathan); SES+PROD target 19/06 |
+| [[Phoenix — Knowledge Base]] | [[Federico Frasca]], [[Tancredi Bosi]], [[Marco Pinelli]] | Silente nel periodo 8-10/06 |
+| [[CRIF — Supporto Team Silvia 2026]] | [[Daniele Dalle Nogare]] (data), [[Tancredi Bosi]], [[Matteo Scalabrini]] (100%) | Silente nel periodo; in espansione (60-70k€) |
+| [[Umbra — Improvement recommender e modulo marketing]] | [[Daniele Dalle Nogare]] | Incidente ETL risolto (8/06); call WoW da rischedulare (rischio stallo); import dati fornitori in corso |
+| [[Casartelli — Industrial Knowledge]] | Simone + [[Luca Stendardo]] (+ [[Carlo Venditti]]/Tancredi per GenAI, da decidere) | Kick-off interni/cliente 10-11/06; requisiti entro metà luglio; primo rilascio settembre |
+| [[Prima Industrie — Virtual Assistant]] | TL [[Marco Pinelli]] (in ferie fino ~15/06), op. [[Carlo Venditti]] | Ingestion bloccata da permessi Bedrock; dati PST via Volos quasi completi; UAT in ridefinizione |
+| [[Albini & Castelli — Gestione cantieri]] | Simone | Cliente riattivo (8/06): 3 segnalazioni, fix margine % già committato |
+| [[Sebi Group — Acquisizione database/mailing e app export]] | Simone (estrazione, in background); lead [[Roberto Bonetti]] | Pre-sales: estrazione email entro fine giugno; app proposta ma non ancora comprata |
 
 ## Stack interno (priorità di Simone)
-[[LAIF Tech Stack]] = ombrello `laif-*`: [[Laif Factory]] (CLI `laif`, agenti, skill, eval; skill `/squad`), [[Laif Agent]] (su Bedrock/OpenRouter), [[Merlino]] (knowledge), [[Wolico]] (portale). In valutazione un **team stack interno** (2 FTE da agosto).
+[[LAIF Tech Stack]] = ombrello `laif-*`: [[Laif Factory]] (CLI `laif`, agenti, skill, eval; skill `/squad`), [[Laif Agent]] (su Bedrock/OpenRouter), [[Merlino]] (knowledge), [[Wolico]] (portale — in arrivo pagina "Progetti" con canoni a rischio e flag attivo). **Team stack interno** in gestazione (2 FTE da ~agosto, Carlo candidato); nuovo meeting ricorrente "Team Stack Interno" dal 10/06.
 
 ## Chi-fa-cosa (Team Blue)
-- **[[Simone Brigante]]** — TL/PM su tutto; operativo su Bonfiglioli e Casartelli; **focus su Life Factory**; defilato su Prima.
+- **[[Simone Brigante]]** — TL/PM su tutto; operativo su Bonfiglioli, Casartelli, Jubatus (infra/deploy) e estrazione Sebi; **focus su Laif Factory/Merlino**; defilato su Prima.
 - **[[Federico Frasca]]** — UX/FE: Nivi, Jubatus, Phoenix.
 - **[[Luca Stendardo]]** — full-time Lamonea → poi Casartelli.
-- **[[Tancredi Bosi]]** — CRIF + Andriani (parsing) + Nivi + Casartelli (spot).
-- **[[Carlo Venditti]]** — Prima Industrie + stack interno.
+- **[[Tancredi Bosi]]** — CRIF + Andriani (parsing) + Nivi + eventualmente Casartelli (GenAI, in alternativa a Carlo).
+- **[[Carlo Venditti]]** — Prima Industrie + stack interno (candidato team dedicato); eventualmente Casartelli.
 - **[[Daniele Dalle Nogare]]** — Umbra + CRIF (Data Analyst).
-- **[[Davide Leonescu]]** — Bonfiglioli (junior, pomeriggi).
+- **[[Davide Leonescu]]** — Bonfiglioli (junior, pomeriggi; ora anche su Tailscale/DWH).

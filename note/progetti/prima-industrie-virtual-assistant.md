@@ -5,8 +5,8 @@ tipo: progetto
 tag: [lavoro, laif]
 stato: attivo
 creato: 2026-06-08
-aggiornato: 2026-06-09
-fonti: ["scoperta 2026-06-08 (Outlook/Notion)", "intervista 2026-06-08", "approfondimento riunioni 18-19/05 (Notion) 2026-06-09"]
+aggiornato: 2026-06-10
+fonti: ["scoperta 2026-06-08 (Outlook/Notion)", "intervista 2026-06-08", "approfondimento riunioni 18-19/05 (Notion) 2026-06-09", "scoperta 2026-06-10 (Outlook + call allineamento 10/06)"]
 correlati:
   - "[[Prima Industrie]]"
   - "[[Marco Pinelli]]"
@@ -43,7 +43,15 @@ Assistente virtuale / knowledge assistant su **~1,5 TB di documenti (~300.000 fi
 - Parsing su **EC2** (~20 min): ~**17.000 file** processati, solo ~41 errori (estrazione oltre le aspettative).
 - **Classificazione a Tier**: **A** = file core/manuali, estratti completi (~5GB testo); **B** = forse utili, solo prime 3 pagine come riferimento; **C** = scartati (~700GB: foto iPhone, dump iCloud, ridondanti). OCR su una parte dei Tier B (~20-50€); Tier C escluso (costo proibitivo).
 - **Repository ufficiale = bucket S3**. UX a **filtri** (segmento/tipo/modello + serial number) per restringere alla macchina ("cono di visibilità").
-- **UAT: start 15-17 giugno 2026**, poi follow-up per l'avvio.
+- **UAT**: inizialmente prevista con start 15-17 giugno 2026; a inizio giugno le date risultano **in ridefinizione** (tema da non approfondire per ora, su indicazione di Simone 10/06).
+
+## Aggiornamenti (8-10/06)
+- **Ingestion pronta ma bloccata dai permessi AWS Bedrock**: richiesti l'8/06 a Prima Power (InvokeModel & co.), abilitazione scalata internamente dal cliente; il processamento massivo parte appena sbloccato.
+- **Dati PST** trasferiti tramite il fornitore terzo **Volos**: Europa completato (file su SFTP LAIF), Cina risolto, USA in arrivo. Ticket Jira integrati parzialmente; classificazione work order in attesa di dato pulito da un software qualità esterno.
+- **UI/UX (call 10/06)**: logo "**Prima Power**" (non Prima Industrie); filtro gerarchico a cascata famiglia→tipo→modello (non obbligatorio); finestra chat più larga.
+- **Feedback**: stelline di accuratezza mantenute per continuità col benchmark del pilota + feedback negativo guidato obbligatorio (info mancanti / errate / fraintendimento) + export massivo.
+- **Accessi**: SSO Microsoft con utenze pre-create; profili *tecnico di service* (visibilità per filiale, da DB PST) vs *manager/Global Support* (worldwide). Benchmark a ~190 domande (manca il contributo di "Tuomas/Thomas Koski"). Validazione knowledge col Global Support prima dell'apertura agli utenti. Vincolo: ferie Finlandia da metà luglio.
+- [[Marco Pinelli]] in ferie nella settimana dell'8/06 (rientro ~15/06); copre [[Carlo Venditti]].
 
 ## Timeline
 - **Kick-off cliente: giovedì 21/05** (56 persone).
@@ -62,7 +70,7 @@ Assistente virtuale / knowledge assistant su **~1,5 TB di documenti (~300.000 fi
 - **Rollout**: luglio Italia + Germania; set-ott a cascata sul resto del mondo; tutti i paesi a regime **fine ottobre**. Steering committee ~mensile.
 
 ## Glossario di dominio (Prima)
-- **Volos** — gestionale cliente per listini/prezzi/ricambi.
+- **Volos** — fornitore/terza parte (volos.it; ref. Elisa Vacchiero, M. Lissolo) che gestisce l'**estrazione e il trasferimento dei dati PST** verso LAIF; in precedenza annotato come "gestionale cliente per listini/prezzi/ricambi" (plausibilmente è l'azienda dietro quel sistema).
 - **PST** — sistema cliente (dati via SFTP come JSON nelle tabelle; **non** il formato .pst di Outlook).
 - **Jira** — integrazione via API (per ora limitata a 2 progetti).
 - **Bedrock Data Automation (BDA)** — servizio AWS OCR/parsing (~$0.01/pagina).

@@ -7,7 +7,16 @@
 - [ ] **Nivi** — ragione sociale/settore reale del cliente ("pian piano approfondiremo"). → [[Nivi — Automazione Risposta Mail]]
 - [ ] **Feedback Bounty** — se prende forma, valutare una nota-concetto dedicata (oggi è una riga in [[LAIF Tech Stack]]).
 
+## Fili aperti (scoperta 10/06)
+- [ ] **Sebi Group** — esito vendita: comprano solo l'estrazione o anche l'app? → [[Sebi Group — Acquisizione database/mailing e app export]]
+- [ ] **Casartelli** — decisione finale Carlo vs Tancredi per la parte GenAI/KB. → [[Casartelli — Industrial Knowledge]]
+- [ ] **Prima Industrie** — riprendere il tema **UAT/date** quando si chiarisce (per ora in pausa su richiesta di Simone, 10/06). → [[Prima Industrie — Virtual Assistant]]
+- [ ] **Umbra** — conferma della call WoW (17 o 19/06) e rischio stallo sviluppi. → [[Umbra — Improvement recommender e modulo marketing]]
+
 ## Dubbi minori (quando capita)
+- [ ] **Alberto Finelli** — ospite in LAIF il 17/06 (invito a tutta l'azienda, da gmail personale): chi è? (candidato? speaker?)
+- [ ] **Team building** — 16/06 a Bologna vs "il 25" citato al kick-off Casartelli: quale data vale (o sono due eventi)?
+- [ ] **Meeting 18/06 Mordenti+Simone "Notion, progetti e CRM — cosa ne resta?"** — esito rilevante per Wolico/strumenti interni: catturarlo.
 - [ ] **Andriani** — disambiguare i due "Rizzi" (referente ARCA vs ordini Italia); "Dino" = quale? Significato esatto di OC/OCF.
 - [ ] **Phoenix** — cos'è "Svitla" (target upstream; forse "Svicom"?).
 - [ ] **Lamonea** — ragione sociale dell'azienda "133" (distributore medicale).

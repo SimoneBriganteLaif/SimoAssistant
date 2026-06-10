@@ -5,7 +5,7 @@ tipo: progetto
 tag: [lavoro, laif]
 stato: attivo
 creato: 2026-06-08
-aggiornato: 2026-06-09
+aggiornato: 2026-06-10
 fonti: ["Notion DB Progetti", "intervista /avvio 2026-06-08", "approfondimento riunioni 13-15/05 (Notion) 2026-06-09"]
 correlati:
   - "[[Simone Brigante]]"
@@ -57,7 +57,13 @@ Tracciamento/gestione spedizioni in **2 fasi**: Fase 1 *monitoraggio* (sostituir
 - **Tracking BRT**: campo corretto = **"segnacollo"** (disponibile subito). Ottimizzazione **mobile completata** (clienti/articoli/CRM/magazzini).
 - **Deploy**: la produzione non è mai stata rilasciata → primo deploy completo (con creazione DB) target **giovedì 11/06** (+ ETL già girata 1-2 giorni prima); call con Marco + cliente l'11/06. Chiusura obiettivo **fine giugno** (scadenza interna). Drag&drop Kanban temporaneamente disattivato; nuovo cliente potenziale gestito su **ditta 999**.
 
+## Aggiornamenti (8-10/06)
+- **Lun 8/06 rilasciata versione importante**: l'app ora **scrive su tutte e 3 le ditte** (creazione e modifica) + form di creazione ordini + fix. Il task "**Deploy in Produzione**" resta con target **11/06** (Luca), con **SAL l'11/06** (presente **Mathias Lamonea**) per **congelare lo scope**: escludere richieste grandi (es. portale B2B), accettare solo fix piccoli/critici.
+- **Raffica di evolutive richieste da Spilli (8-9/06)**: sezione **preventivi** (stessa logica ordini; verde = accettati, rosso = respinti); **lista notifiche/reportistiche** + fac-simile stampe PDF/Excel; **colori identificativi per ditta** (49 rossa, 133 blu, 212 verde); interruttore magazzino/giacenze; **valore magazzino pesato per lotto d'acquisto**. Call dedicata fatta il 9/06.
+- Pagina **mobile considerata fatta** (in attesa di conferma scritta del cliente); 2 ticket Team System aperti da oltre una settimana (outage del 5/06).
+
 ## Referenti cliente
+- **Mathias Lamonea** — titolare/decisore (partecipa ai SAL, testa l'app).
 - **Andrea Spilli** (a.spilli@lamonea.com) — referente principale, molto operativo, contatto quasi quotidiano; gestisce l'associazione ordine–DDT su Team System.
 - **Matteo Farinelli**, **Filippo Nicoletti** — sales interni lato cliente (testano la scrittura ordini).
 - **Stefano** — logistica/magazzino (tiene l'Excel spedizioni); contatto occasionale.

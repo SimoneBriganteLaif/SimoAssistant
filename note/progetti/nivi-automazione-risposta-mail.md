@@ -5,7 +5,7 @@ tipo: progetto
 tag: [lavoro, laif]
 stato: attivo
 creato: 2026-06-08
-aggiornato: 2026-06-09
+aggiornato: 2026-06-10
 fonti: ["Notion DB Progetti", "intervista /avvio 2026-06-08", "approfondimento riunioni 15-18/05 (Notion) 2026-06-09"]
 correlati:
   - "[[Simone Brigante]]"
@@ -36,9 +36,15 @@ Il cliente chiama l'app **"Live Pro" / "LIFE"** (≠ la CLI interna `laif`). Cat
 - **Migrazione mailbox** in corso (pacchetti PST + forwarding): prima le caselle "autostrade", poi la PEC interna ("TDC Communications"); altre caselle Info ASL, Info TPL, NIVICERT.
 - Dominio: corrispondenza per **concessioni autostradali** ed enti (TPL, ASL, comuni via NIVICERT). Ufficio cliente a Firenze (chiuso il 24/6).
 
+## Aggiornamenti (8-10/06)
+- **Tecnicamente pronto per il live**: si attende il via libera del cliente sulle ultime caselle. Vicini al target giornate — **non sforare**.
+- **Ticket #17 "Mail mancanti"** (aperto da Erika Giovannuzzi l'8/06 via Wolico): alcune mail presenti in casella non compaiono nell'applicativo.
+- **16/06 giornata on-site a Firenze** ("LAIF in casa Nivi", con Simone, [[Andrea Mordenti]] e Federico) sul nuovo flusso del customer care; obiettivo **upsell dashboard** con KPI semplici (mail processate, status, operatori attivi) — Federico prepara la lista upsell, Simone porta l'iPad per disegnarla col cliente. Verificare se "Andrea" (Mordenti) partecipa.
+- Nuova richiesta di Alessandro (Michaelsson): rimuovere il raggruppamento in hyperthread — da chiarire.
+
 ## Referenti cliente
 - **Alessandro Michaelsson** (alessandro.michaelsson@nivi.it) — molto sollecito (invia i pacchetti PST, chiede di aggiungere caselle).
-- **Erika** — responsabile / gestione email lato cliente (scrive sul tema "autostrade").
+- **Erika Giovannuzzi** — responsabile / gestione email lato cliente (scrive sul tema "autostrade"; apre ticket).
 - **Federico** — *admin* lato cliente (≠ [[Federico Frasca]]). **Roberto** — commerciale/tecnico cliente.
 
 ## Nota
