@@ -24,3 +24,8 @@ Io (proprietario di questa base di conoscenza).
 - Cerco di essere coinvolto su tutti i progetti del team, almeno per conoscenza.
 - Seguo personalmente [[Albini & Castelli — Gestione cantieri]] (in manutenzione).
 - Modo di lavorare attuale: [[Modo di lavorare — call 1:1 verticali per progetto]].
+
+## Focus attuale (giu 2026)
+- Sta lavorando molto su **[[Jubatus — Supporto sviluppo|Jubatus]]**, **[[Nivi — Automazione Risposta Mail|Nivi]]** e **[[Andriani — Automazione ordini|Andriani]]**.
+- Su **[[Prima Industrie — Virtual Assistant|Prima Industrie]]** si tiene **volutamente defilato** (vuole conoscere, non gestire).
+- Al momento segue (per passione) tutte le attività dello **stack interno** ([[LAIF Tech Stack]]); vuole concentrarsi di più su **[[Merlino]]**, in vista della call di presentazione delle nuove modalità di **project management**.

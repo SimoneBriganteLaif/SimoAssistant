@@ -30,7 +30,7 @@
 | Phoenix — Knowledge Base | progetto | lavoro, laif | note/progetti/phoenix-knowledge-base.md |
 | Umbra — Improvement recommender e modulo marketing | progetto | lavoro, laif | note/progetti/umbra-recommender-marketing.md |
 | Casartelli — Industrial Knowledge | progetto | lavoro, laif | note/progetti/casartelli-industrial-knowledge.md |
-| LAIF Tech Stack | progetto | lavoro, laif | note/progetti/laif-tech-stack.md |
+| LAIF Tech Stack | progetto | lavoro, laif, interno | note/progetti/laif-tech-stack.md |
 | Prima Industrie — Virtual Assistant | progetto | lavoro, laif | note/progetti/prima-industrie-virtual-assistant.md |
 | Albini & Castelli — Gestione cantieri | progetto | lavoro, laif | note/progetti/albini-e-castelli-gestione-cantieri.md |
 | Andriani | area | lavoro, laif, cliente | note/aree/andriani.md |
@@ -45,3 +45,16 @@
 | Prima Industrie | area | lavoro, laif, cliente | note/aree/prima-industrie.md |
 | Albini & Castelli | area | lavoro, laif, cliente | note/aree/albini-e-castelli.md |
 | Modo di lavorare — call 1:1 verticali per progetto | concetto | lavoro, decisione, preferenza | note/concetti/modo-di-lavorare-call-verticali.md |
+| Laif Factory | progetto | lavoro, laif, interno | note/progetti/laif-factory.md |
+| Laif Agent | progetto | lavoro, laif, interno | note/progetti/laif-agent.md |
+| Cristiano Piscioneri | persona | lavoro, laif | note/persone/cristiano-piscioneri.md |
+| Simone Antimiani | persona | lavoro, laif | note/persone/simone-antimiani.md |
+| Wolico | concetto | lavoro, laif, interno | note/concetti/wolico.md |
+| Obiettivi di crescita LAIF 2026-2027 | fatto | lavoro, laif, decisione, organizzazione | note/fatti/obiettivi-crescita-laif-2026-2027.md |
+| Piano assunzioni e sistema premi 2026-2027 | fatto | lavoro, laif, decisione, organizzazione | note/fatti/piano-assunzioni-2026.md |
+| Merlino | concetto | lavoro, laif, interno | note/concetti/merlino.md |
+| Sistema PM & Staffing — roadmap interna Q2 2026 | fatto | lavoro, laif, decisione, organizzazione | note/fatti/sistema-pm-staffing.md |
+| Alessandro Grotti | persona | lavoro, laif | note/persone/alessandro-grotti.md |
+| Helia | progetto | lavoro, laif | note/progetti/helia.md |
+| Angelo | persona | lavoro, laif | note/persone/angelo.md |
+| Standard caselle email per cliente | concetto | lavoro, laif, interno | note/concetti/standard-email-clienti.md |

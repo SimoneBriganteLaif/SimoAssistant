@@ -15,6 +15,9 @@ correlati:
   - "[[Marco Vita]]"
   - "[[Marco Pinelli]]"
   - "[[Andrea Mordenti]]"
+  - "[[Simone Antimiani]]"
+  - "[[LAIF Tech Stack]]"
+  - "[[Sistema PM & Staffing — roadmap interna Q2 2026]]"
 ---
 
 # Laif
@@ -30,3 +33,5 @@ Azienda dove lavoro: **consulenza / software house**.
   - team di [[Francesco Barbanti]]
   - team di [[Davide Miani]]
 - **Nota storica**: [[Marco Vita]] e [[Marco Pinelli]] erano team leader prima dell'arrivo di Francesco e Davide, e seguono ancora alcuni progetti come responsabili.
+- **Amministrazione**: [[Simone Antimiani]] (con "Letizia").
+- **Stack interno**: vedi [[LAIF Tech Stack]] e l'iniziativa [[Sistema PM & Staffing — roadmap interna Q2 2026]].

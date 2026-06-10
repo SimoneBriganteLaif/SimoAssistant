@@ -21,6 +21,9 @@ note/         note atomiche (una idea per file)
   persone/    progetti/   aree/   concetti/   risorse/   fatti/
 _indice.md    mappa di tutte le note: titolo, tipo, tag, percorso
 _glossario.md vocabolario CONTROLLATO dei tag (l'unica fonte di tag validi)
+_overview.md  sintesi viva: stato progetti attivi, chi-fa-cosa, scadenze imminenti
+_decisioni.md decision log trasversale (decisioni chiave, datate, per progetto/area)
+_todo.md      to-do DINAMICO (fili aperti + domande pronte; NON storico: gli item risolti si cancellano)
 _log.md       diario cronologico delle modifiche
 ```
 

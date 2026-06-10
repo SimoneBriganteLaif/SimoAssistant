@@ -5,8 +5,8 @@ tipo: persona
 tag: [lavoro, laif]
 stato: attivo
 creato: 2026-06-08
-aggiornato: 2026-06-08
-fonti: ["scoperta 2026-06-08 (Notion)", "intervista 2026-06-08"]
+aggiornato: 2026-06-09
+fonti: ["scoperta 2026-06-08 (Notion)", "intervista 2026-06-08", "approfondimento riunioni 11/05 (Notion) 2026-06-09"]
 correlati:
   - "[[Francesco Barbanti]]"
   - "[[CRIF]]"
@@ -17,4 +17,4 @@ correlati:
 
 - **Team**: team di [[Francesco Barbanti]].
 - Attualmente **~100% su [[CRIF]]**; sempre meno presente sulle altre attività Laif (incluso lo stack interno).
-- In passato lavorava con [[Carlo Venditti]] sullo stack interno; ha collaborato con Simone su [[Albini & Castelli — Gestione cantieri]].
+- In passato lavorava con [[Carlo Venditti]] sullo stack interno; ha collaborato con Simone su [[Albini & Castelli — Gestione cantieri]] e (tempo fa) su [[Andriani — Automazione ordini]] (gestione utenti/permessi).

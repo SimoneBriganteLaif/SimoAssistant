@@ -21,5 +21,7 @@ correlati:
 - **Stato (Notion)**: In Sviluppo
 - **Team leader**: [[Simone Brigante]]
 - **Referente interno**: [[Federico Frasca]]
-- **Descrizione**: Supporto sviluppo + infrastruttura. Attività recenti: deploy DEV, setup ambiente, "tunnel" per i dati, review infrastruttura. Progetto tecnicamente molto attivo.
-- **Referenti cliente**: logan@, gionata@, simone@jubatus.it
+- *Alias*: nelle trascrizioni/dettature compare spesso come **"Ubatus"/"Yubatus"** (storpiatura) — è sempre Jubatus.
+- **Descrizione**: Supporto sviluppo + infrastruttura. Attività recenti: deploy DEV, setup ambiente, "tunnel" per i dati, review infrastruttura. [[Federico Frasca]] lavora su mockup/front-end (review UX/UI ricorrenti con Simone). Progetto tecnicamente molto attivo.
+- **Evoluzione (giu)**: il cliente vuole gestire **invio e ricezione mail su AWS SES** → adattare la pipeline mail (oggi legge da Outlook via Graph API) per leggere da SES (Boto3). [[Federico Frasca]] ne prende l'ownership come progetto "palestra".
+- **Referenti cliente**: logan@, gionata@ ("Jonathan" nelle trascrizioni), simone@jubatus.it

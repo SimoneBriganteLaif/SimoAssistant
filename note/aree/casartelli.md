@@ -13,7 +13,7 @@ correlati:
 
 # Casartelli
 
-Cliente di [[Laif]] (Casartelli Antonio). Nuovo cliente.
+Cliente di [[Laif]] (Casartelli Antonio) — **acciaieria / fabbrica di acciaio a Lecco** (Lago di Lecco). Nuovo cliente, entusiasta.
 
-- **Progetto**: [[Casartelli — Industrial Knowledge]] (commessa 2026054).
-- Kick-off ufficiale 11/6.
+- **Progetto**: [[Casartelli — Industrial Knowledge]] (commessa 2026054), progetto pilota.
+- Kick-off interno 10/6, kick-off cliente 11/6.
