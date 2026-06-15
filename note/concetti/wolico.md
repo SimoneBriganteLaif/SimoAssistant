@@ -5,11 +5,12 @@ tipo: concetto
 tag: [lavoro, laif, interno]
 stato: attivo
 creato: 2026-06-09
-aggiornato: 2026-06-09
+aggiornato: 2026-06-14
 fonti: ["intervista /avvio 2026-06-08", "approfondimento riunioni 11-13/05 (Notion) 2026-06-09"]
 correlati:
   - "[[Laif]]"
   - "[[LAIF Tech Stack]]"
+  - "[[Benozzi — Preventivatore]]"
 ---
 
 # Wolico

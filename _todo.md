@@ -7,11 +7,14 @@
 - [ ] **Nivi** — ragione sociale/settore reale del cliente ("pian piano approfondiremo"). → [[Nivi — Automazione Risposta Mail]]
 - [ ] **Feedback Bounty** — se prende forma, valutare una nota-concetto dedicata (oggi è una riga in [[LAIF Tech Stack]]).
 
-## Fili aperti (scoperta 10/06)
-- [ ] **Sebi Group** — esito vendita: comprano solo l'estrazione o anche l'app? (Bonetti punta al "contratto unico": estrazione + progetto + formazione). → [[Sebi Group — Acquisizione database/mailing e app export]]
-- [ ] **Casartelli** — supporto GenAI/KB: Carlo o Tancredi, da decidere **tra qualche settimana** (orientamento Tancredi). Lo segue [[Luca Stendardo]]. → [[Casartelli — Industrial Knowledge]]
-- [ ] **Prima Industrie** — monitorare lo **sblocco completo di Bedrock** (mancano `ListFoundationModels`/`ListInferenceProfiles`) e l'esito dell'**UAT interno** (settimana del 22). → [[Prima Industrie — Virtual Assistant]]
-- [ ] **Umbra** — conferma della call WoW del **19/06** ed **evitare lo stallo** (no slittamento a luglio). → [[Umbra — Improvement recommender e modulo marketing]]
+## Fili aperti (11-12/06)
+- [ ] **Benozzi** — rispondere su **pipeline ETL ferma** (alert Wolico ETL_RUN_PARTIAL_FAILURE dal 12/06, API Galileo) e definire il **passaggio di consegne / handover**. → [[Benozzi — Preventivatore]]
+- [ ] **Casartelli** — avviare il **task SFTP** (estrazioni CSV da SAP) e preparare l'**incontro in sede a Lecco del 30/06**. → [[Casartelli — Industrial Knowledge]]
+- [ ] **Umbra** — sollecitare i **dati ad Adriano (Bezzi)** in vista della call WoW del **19/06**; se non arrivano → si valuta stop sviluppi. → [[Umbra — Improvement recommender e modulo marketing]]
+- [ ] **Nivi** — portare avanti l'**upsell del rifacimento software** (contratto più grande) all'on-site di Firenze del 16/06. → [[Nivi — Automazione Risposta Mail]]
+- [ ] **Lamonea** — gestione **post go-live** (12/06): focalizzare/chiudere il core, preparare il **SAL del 18/06**, poi spostare Luca su Casartelli. → [[Lamonea — Gestionale / CRM]]
+- [ ] **Prima Industrie** — **go/no-go a fine giugno**; sbloccare le **regole coni di visibilità da Edward** (Excel); accelerare migrazione Bedrock (spinta Vita). → [[Prima Industrie — Virtual Assistant]]
+- [ ] **CRIF / Gualandi** — preparare il **piano B** (profilo alternativo) per il rischio non-rinnovo di [[Mattia Gualandi]]. → [[CRIF — Supporto Team Silvia 2026]]
 
 ## Dubbi minori (quando capita)
 - [ ] **Andriani** — disambiguare i due "Rizzi" (referente ARCA vs ordini Italia); "Dino" = quale? Significato esatto di OC/OCF.

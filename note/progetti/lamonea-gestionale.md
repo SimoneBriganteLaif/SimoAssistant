@@ -5,25 +5,32 @@ tipo: progetto
 tag: [lavoro, laif]
 stato: attivo
 creato: 2026-06-08
-aggiornato: 2026-06-10
-fonti: ["Notion DB Progetti", "intervista /avvio 2026-06-08", "approfondimento riunioni 13-15/05 (Notion) 2026-06-09"]
+aggiornato: 2026-06-14
+fonti: ["Notion DB Progetti", "intervista /avvio 2026-06-08", "approfondimento riunioni 13-15/05 (Notion) 2026-06-09", "riunioni 11-12/06 (go-live produzione)"]
 correlati:
   - "[[Simone Brigante]]"
   - "[[Team Blue]]"
   - "[[Lamonea]]"
   - "[[Luca Stendardo]]"
   - "[[Mattia Gualandi]]"
+  - "[[Marco Vita]]"
+  - "[[Casartelli — Industrial Knowledge]]"
 ---
 
 # Lamonea — Gestionale / CRM
 
 - **Codice commessa**: 2026024
 - **Cliente**: [[Lamonea]] — gestionale **Team System** (ERP)
-- **Stato (Notion)**: In Sviluppo — sviluppo avanzato, [[Luca Stendardo]] full-time
+- **Stato**: **LIVE in produzione dal 12/06** (prod `lamonea.app`); il cliente lo usa.
 - **Team leader**: [[Simone Brigante]]
-- **Referenti interni**: [[Luca Stendardo]] (sviluppatore full-time), [[Mattia Gualandi]] (magazzino)
+- **Referenti interni**: [[Luca Stendardo]] (gestione operativa quotidiana), [[Mattia Gualandi]] (magazzino)
 - **Repo**: `lamonea`, `lamonea-infra`
-- **Obiettivo**: **chiusura entro fine giugno 2026**. Deploy in produzione (mai fatto finora) con ETL. Da delimitare lo scope (escludere B2B e richieste fuori budget — attenzione allo scope creep).
+- **Obiettivo**: **focalizzare/chiudere il core**, poi spostare [[Luca Stendardo]] su [[Casartelli — Industrial Knowledge]].
+
+## Go-live (12/06)
+- **LIVE in produzione dal 12/06**. Strategia decisa (avallata da [[Marco Vita]]): **release parziale + go-live anticipato** anziché completamento totale.
+- Importati **~7.000 preventivi storici** da Team System. Sync ordini cliente **scorporata a 10-15 min** (il resto resta a 30min/1h). **Ticket aperto a Team System** per l'outage ricorrente.
+- **SAL ufficiale col cliente: giovedì 18/06**.
 
 ## Descrizione
 App custom appoggiata al gestionale **Team System** del cliente: ordini, preventivi/CRM, **gare**, **magazzino**, **spedizioni**. Rilasci frequenti, SAL periodici, molte micro-richieste operative.

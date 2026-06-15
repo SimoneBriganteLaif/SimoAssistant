@@ -1,0 +1,379 @@
+
+##### NET — config YAML #####
+networking:
+  # CIDR e dimensionamento (default sicuri: /16, 2 AZ)
+  vpc_cidr: "10.0.0.0/16"
+  max_azs: 2                       # 2 = multi-AZ minimo; alza a 3 solo se serve
+
+  # FEATURE FLAG egress delle subnet private (decisione strategica #1: account isolati)
+  # interface-endpoints = default sicuro, niente rotta a internet, niente NAT
+  # nat-instance        = fck-nat t4g.nano (~3-4$/mese) per egress internet VERO
+  # none                = nessun egress (tutto isolated; usabile per account ultra-chiusi)
+  egress_mode: "interface-endpoints"
+
+  endpoints:
+    interface:                     # i 5+ endpoint per-account che sostituiscono il NAT
+      - ecr.api
+      - ecr.dkr
+      - logs
+      - secretsmanager
+      - ssm
+      - sts
+    extra_interface: []            # es. ["bedrock-runtime"] sui progetti GenAI, ["kms","sqs"]
+    gateway:                       # sempre gratis, lasciare ON
+      - s3
+      - dynamodb
+
+  nat_instance:                    # usato SOLO se egress_mode: nat-instance
+    instance_type: "t4g.nano"
+    az_count: 1                    # una sola istanza per contenere il costo
+
+  flow_logs:                       # NETSEC-07, ON di default
+    enabled: true
+    traffic_type: "REJECT"         # REJECT (economico) | ALL (debug) | ACCEPT
+    retention_days: 14
+
+# --- override per ambiente (la "configurabilita' per ambiente" che oggi non esiste) ---
+environments:
+  dev:
+    networking:
+      flow_logs: { traffic_type: "REJECT", retention_days: 7 }
+      # un dev che non parla con API esterne puo' restare a interface-endpoints
+  prod:
+    networking:
+      max_azs: 3                   # piu' resilienza in prod (abilita anche Multi-AZ RDS lato modulo rds)
+      flow_logs: { traffic_type: "ALL", retention_days: 30 }
+
+##### DATA — config YAML #####
+database:
+  # --- identita' (il resto e' derivato da env + customer dal contesto) ---
+  app: backend            # consente piu' DB nello stesso account (vincolo 1-infra-2-app)
+  name: app_db            # database_name iniziale
+  port: 5432
+
+  # --- sizing / storage (GP3 autoscaling conservato da laif-cdk) ---
+  engine_version: "16.4"
+  instance_class: db.t4g.micro     # prod tipicamente db.t4g.small/medium
+  allocated_storage_gb: 20
+  max_allocated_storage_gb: 100    # 0 per disattivare l'autoscaling storage
+  allow_major_version_upgrade: false
+
+  # --- sicurezza (default ON, NON serve scriverli) ---
+  # storage_encrypted: true        # hard ON, non disattivabile
+  # subnet: PRIVATE_ISOLATED       # hard, non c'e' piu' l'opzione PUBLIC
+  deletion_protection: true        # prod: forzato true comunque
+
+  # --- FEATURE FLAG ---
+  multi_az: false                  # vero solo in prod; in dev viene rifiutato
+  auto_turnoff: false              # solo dev: stop/start schedulato (COST-RDS-DEV-TURNOFF)
+  secret_rotation: false           # rotazione automatica del secret master
+  monitoring: true                 # PI + Enhanced Mon + log + alarm (default ON)
+  shared_multi_schema: false       # vedi open_questions: di norma NO (isolamento account)
+
+  # --- backup (per-ambiente, COST-RDS-BACKUP-RETENTION) ---
+  backup_retention_days: null      # null = default per env (dev 7, prod 14); >=14 in prod
+
+  # --- override soglie alarm (opzionali; default calcolati dall'instance class) ---
+  alarms:
+    free_storage_space_min_gb: 2
+    db_connections_max: null       # null = 80% del max derivato dalla RAM
+    cpu_utilization_max_pct: 85    # usato solo su classi non-burstable
+
+  # --- override scheduler turnoff (solo se auto_turnoff: true) ---
+  turnoff:
+    stop_cron: "cron(0 20 ? * MON-FRI *)"
+    start_cron: "cron(0 7 ? * MON-FRI *)"
+    timezone: Europe/Rome
+
+##### COMPUTE — config YAML #####
+apps:
+  - name: backend
+    image:
+      ecr_repo: backend            # riferito al modulo ecr (scan_on_push preservato)
+      tag: "git-3f9a2c1"           # OBBLIGATORIO e immutabile — 'latest' rifiutato (SCALE-08)
+    compute:
+      launch_type: fargate         # default; 'ec2' solo per GPU/casi costo
+      cpu: 512
+      memory: 1024
+      desired_count: 2             # default 2 in prod, 1 in dev (SCALE-03)
+      command: ["gunicorn", "app:app", "--workers", "3", "--bind", "0.0.0.0:8000"]  # 2+ worker (SCALE-02)
+      container_port: 8000
+      health_check:                # health check CONTAINER defanged (SCALE-01 / fix Nivi)
+        path: /health
+        interval_seconds: 30
+        timeout_seconds: 5
+        retries: 3
+        start_period_seconds: 60
+      deploy:
+        circuit_breaker: true      # ON (SCALE-06)
+        rollback: true             # ON
+        health_check_grace_period_seconds: 60
+      routing:                     # ALB CONDIVISO dell'account, multi-app via host/path
+        alb: shared                # usa l'ALB unico del cliente; più app puntano allo stesso
+        host_headers: ["api.cliente.laifgroup.com"]
+        path_patterns: ["/*"]
+      autoscaling:                 # SCALE-05 — feature flag, default OFF
+        enabled: false
+        min_count: 2
+        max_count: 6
+        target_cpu_percent: 60
+        target_requests_per_target: 800
+      alarms:                      # MON-01 — default ON, instradati a Wolico
+        enabled: true
+
+# blocco a livello account: l'ALB condiviso tra le apps
+shared_alb:
+  internet_facing: true
+  certificate: arn:aws:acm:eu-west-1:...:certificate/...   # dal modulo dns/acm (DNS-validated)
+  cloudfront_ingress_only: true   # SG = prefix list CloudFront + header segreto (NETSEC-03)
+  container_insights: true        # cluster (MON-02)
+
+##### EDGE — config YAML #####
+edge:
+  enabled: true                      # se false, il modulo non sintetizza nulla
+  domains:                           # CNAME custom serviti dalla distribuzione (vuoto = solo *.cloudfront.net)
+    - app.cliente.com
+  certificate:
+    # cert CloudFront in us-east-1 per l'HTTPS sul VIEWER (domini custom).
+    # creato/validato DNS dal modulo cert (TOOL-06); qui si referenzia per nome logico o ARN.
+    cloudfront_cert_ref: edge-viewer-cert      # risolto dal modulo cert (us-east-1)
+  frontend:
+    bucket_root_name: assets         # nome -> <env>-<app>-fe-assets
+    versioned: true                  # rollback rapido della SPA
+    spa: true                        # abilita error_responses 403/404 -> index.html (200)
+  origin:
+    # reverse-proxy verso il backend (modulo ecs/alb). HTTPS obbligatorio sull'origin.
+    api_path_pattern: "/api/*"
+    alb_ref: backend-alb             # risolto dal modulo ecs (stesso stack)
+    protocol: https                  # default https; http rifiutato in prod
+    # cert REGIONALE (eu-west-1) per l'HTTPS lato ALB: creato dal modulo cert (TOOL-06),
+    # referenziato dal modulo ecs sul listener 443. L'edge non lo possiede, ma lo richiede attivo.
+    secret_header:
+      enabled: true                  # NETSEC-03: header segreto CloudFront->ALB
+      header_name: X-Origin-Verify   # il modulo ecs crea la listener-rule 403-se-assente
+  logging:
+    enabled: true
+    retention_days: 90               # era illimitato -> costo CloudFront logs sotto controllo
+  waf:                               # NETSEC-04
+    enabled: true                    # DEFAULT ON (era 0/24)
+    mode: count                      # primo deploy in COUNT; passare a "block" dopo verifica metriche
+    rate_limit: 2000                 # req per IP su finestra 5 min
+    logging:
+      enabled: true
+      retention_days: 90
+    allow_ip_set: []                 # se valorizzato -> default_action=block (allowlist-only)
+    block_ip_set: []
+
+# --- snippet per un ambiente DEV (override piu' permissivi) ---
+# edge:
+#   frontend: { versioned: false }
+#   logging:  { enabled: false }          # risparmio in dev
+#   waf:      { mode: count }             # in dev resta in count per non bloccare i test
+
+##### OBS — config YAML #####
+observability:
+  enabled: true                 # master flag del modulo (default ON, sicuro-by-default)
+  wolico: true                  # push CloudWatch -> Wolico (canale primario)
+  dashboard: false              # vista tecnica CloudWatch opzionale (MON-05), OFF di default
+  sns_email_fallback: true      # email diretta dal topic se Wolico irraggiungibile
+  maintainers:                  # destinatari fallback (Wolico ha il suo routing maintainer)
+    - devops@laifgroup.com
+  wolico_ingest_url: https://wolico.laifgroup.com/api/ingest/infra-alarm
+  wolico_api_key_secret: /prod/nivi/wolico-ingest-key   # ARN o nome Secrets Manager
+
+  logs:
+    retention_dev: ONE_WEEK     # MON-06: niente piu' retention infinita
+    retention_prod: ONE_MONTH
+    container_insights: true    # MON-02
+  rds:
+    performance_insights: true  # MON-03 (coord. modulo rds)
+    enhanced_monitoring_seconds: 60
+
+  # Tutti gli alarm sono ON di default con soglie sensate; qui si fa SOLO override.
+  alarms:
+    backend:
+      cpu_high: { threshold: 80, evaluation_periods: 3, period_minutes: 5 }
+      running_tasks_low: { enabled: true }     # l'alarm che mancava a Nivi (treat_missing=BREACHING)
+      alb_5xx: { threshold: 10, period_minutes: 1, evaluation_periods: 3 }
+    rds:
+      free_storage_pct: { threshold: 10 }
+      connections_pct: { threshold: 80 }
+      read_latency: { enabled: false }         # opzionale, off di default
+# --- esempio ambiente dev: piu' leggero ---
+# observability:
+#   dashboard: false
+#   logs: { container_insights: false }        # risparmio su dev
+#   rds: { performance_insights: false }
+
+##### JOBS — config YAML #####
+jobs:
+  # 1) ETL notturno schedulato (sostituisce ETLStack EC2 + add_scheduled_task di prima-power)
+  - name: etl-nightly
+    kind: scheduled
+    command: "run etl --steps LND --steps STG --steps TRN --steps PRS --run-type ALL --send-etl-email"
+    schedule: "cron(0 2 * * ? *)"        # EventBridge Scheduler, non Rule
+    size: large                           # 2 vCPU / 4 GB su Fargate, ZERO istanze tra i run
+    timeout: 3h
+    image: etl                            # repo ECR dedicato; tag = digest immutabile (no :latest)
+    needs: [db, secret:dwh]               # grant generati: GetSecretValue scoping + SG verso RDS
+    enabled: true
+
+  # 2) Job on-demand pesante (sostituisce coci EcsEC2Task usato a mano)
+  - name: algo-batch
+    kind: on-demand
+    command: "run algo"
+    size: { cpu: 4096, mem: 16384 }       # taglia esplicita; Fargate (16vCPU/120GB max)
+    # compute: ec2                         # OPT-OUT esplicito solo per GPU/oltre-limiti-Fargate
+    needs: [db, secret:default]
+
+  # 3) Worker async su coda (sostituisce il background-task nel backend → fuori dal web)
+  - name: doc-processor
+    kind: queue
+    command: "run worker"
+    size: medium
+    queue: doc-jobs                       # SQS + DLQ creati in automatico
+    visibility_timeout: auto              # = 6 × timeout (sano, niente 43200 hardcoded)
+    max_receive_count: 5                  # poi → DLQ
+    autoscale: false                      # flag: scala sui messaggi in coda (default OFF)
+    min_consumers: 0                      # dev può andare a 0; prod default 1
+
+  # 4) Orchestrazione multi-step (sostituisce la factory Step Functions custom)
+  - name: full-pipeline
+    kind: workflow
+    schedule: "cron(0 1 * * ? *)"
+    steps:
+      - run: etl-nightly                  # riusa il job già definito sopra
+      - parallel:
+          - run: algo-batch
+          - run: doc-processor
+      - run: notify                       # un altro job on-demand
+
+# Default sicuri del modulo (ribaltano l'ETLStack): tutto Fargate, subnet private,
+# niente IP pubblico, niente capacity provider EC2 a meno di compute:ec2 esplicito.
+jobs_defaults:
+  compute: fargate
+  subnets: PRIVATE_ISOLATED               # PRIVATE_WITH_EGRESS solo se needs:internet
+  assign_public_ip: false
+  alarms_to_wolico: true                  # SNS → endpoint ingest Wolico su fallimento
+
+##### CONFIG — config YAML #####
+## ────────────────────────────────────────────────────────────────────────
+## values.yaml — UNICA scheda del cliente (single source of truth).
+## Sostituisce dev.yaml + prod.yaml + app.py + i blocchi sparsi.
+## "Contenuto utile" totale di una repo infra ≈ queste righe. app.py è generato.
+## ────────────────────────────────────────────────────────────────────────
+schema_version: 2            # versione dello schema (per migrazioni future)
+
+# 1) IDENTITA' — un solo posto per customer/account/region.
+identity:
+  customer: prima-power      # slug cliente, usato per naming e tag
+  domain_zone: app.laifgroup.com   # zona base per i domini derivati
+  accounts:                  # 1 account per ambiente (isolamento mantenuto)
+    dev:  { account_id: "111111111111", profile: prima-power-dev }
+    prod: { account_id: "975707451837", profile: LaifProd }
+  region: eu-west-1          # default org; override per-app se serve
+
+# 2) DEFAULTS — valgono per tutte le apps salvo override. Sicuri-by-default.
+defaults:
+  monitoring: true           # CloudWatch->SNS->Wolico ingest (OBS) ON ovunque
+  db_private: true           # RDS PRIVATE_ISOLATED (ribalta il default rotto)
+  waf: true                  # WAFv2 attivo (era deployato 0/24)
+  multi_az: false            # raddoppia il costo RDS -> opt-in solo prod
+  autoscaling: false         # richiede ALB->ECS service; opt-in per-app
+  eip: false                 # niente IP pubblici sul workload (subnet private)
+  auto_turnoff: false        # spegnimento ECS+RDS; tipicamente ON nei dev
+
+# 3) APPS — cittadini di prima classe. Risolve 1-account/N-app (crif/prima/laif).
+#    Naming (stack id, dominio, bucket, secret) DERIVATO: niente '# CHANGE ME'.
+apps:
+  # --- app principale ---
+  - name: prima-power        # -> stack id {env}-prima-power-stack, dominio prima-power.app.laifgroup.com
+    db:
+      name: prima_power
+      engine_version: "17.6"
+      multi_az: true         # override del default solo per questa app (prod)
+    compute:
+      instance_class: t4g.medium
+    flags:
+      autoscaling: true      # questa app scala (overide del default OFF)
+      waf: true
+    jobs:                    # modulo JOBS comporto SOLO se questa lista esiste
+      - name: inventory
+        kind: scheduled
+        size: medium         # -> Fargate 1vCPU/2GB (vedi tabella size del modulo JOBS)
+        schedule: "cron(30 5 * * ? *)"
+        command: "run etl --steps LND --steps STG --steps TRN --steps PRS --run-type ALL --send-etl-email"
+      - name: export-to-pst
+        kind: scheduled
+        size: small
+        schedule: "cron(0 1 * * ? *)"
+        command: "run etl --steps EXP --run-type PRICING --send-etl-email"
+        environments: [prod]   # questo job esiste solo in prod
+
+  # --- seconda app nello STESSO account (era prima_pilot_default_stack in app.py) ---
+  - name: prima-pilot        # -> {env}-prima-pilot-stack, prima-pilot.app.laifgroup.com
+    db:
+      name: prima_pilot
+      engine_version: "15.7"
+    flags:
+      auto_turnoff: true
+      waf: false             # esplicito: niente WAF su questa app
+    environments: [dev, prod]
+
+# 4) OVERRIDE PER AMBIENTE — solo i delta; il resto eredita da defaults/app.
+environments:
+  dev:
+    defaults: { auto_turnoff: true, waf: false }   # i dev: turnoff ON, WAF OFF
+  prod:
+    defaults: { multi_az_allowed: true }           # gate: multi_az consentito solo qui
+
+## ── Cos'altro NON serve più scrivere (tutto derivato per convenzione):
+## stack id, domain, bucket name, secret name, rds_identifier, certificate_arn
+## (cert DNS-validated dallo stack via TOOL-06), waf_acl_parameter_name, account_id
+## ripetuti, i 56 parametri del TemplateStack, il blocco lambda_rds_turnoff,
+## il blocco etl_stack copia-incollato, e l'intero app.py.
+
+##### REPO — config YAML #####
+## Una sola "scheda" (SSOT) per cliente → genera SIA infra SIA pipeline app. Vive nella repo APP.
+## File: laif.yaml (root della repo di progetto). TOOL-08: questa scheda sostituisce values.yaml + dev/prod.yaml + GH vars + laif-dns + SSM scattered.
+
+schema_version: 2            # nuova libreria CDK; il packaging rifiuta schema < 2 (no deploy "vecchio flusso" su nuovo CDK)
+customer: casartelli         # codice cliente (slug). Naming derivato da qui.
+
+# --- pinning della libreria infra (TOOL-05): obbligatorio, niente HEAD floating ---
+laif_infra:
+  source: codeartifact       # codeartifact | git   (default codeartifact; git solo bootstrap/fallback)
+  version: "2.3.0"           # PIN ESATTO. Vietato range/HEAD: il deploy fallisce se assente o "latest".
+
+# --- ambienti: identita' per-account (isolamento mantenuto, niente VPC condivisa) ---
+environments:
+  dev:
+    account_id: "111111111111"
+    profile: casartelli-dev
+    region: eu-west-1
+  prod:
+    account_id: "222222222222"
+    profile: casartelli-prod
+    region: eu-west-1
+
+# --- OIDC GitHub->AWS (TOOL-04 / NETSEC-06): nessuna access key statica, nessun GH_TOKEN ---
+ci:
+  oidc: true                          # default ON. Il role di deploy e' CDK-owned (vedi modulo iam-cicd)
+  deploy_role_arn_ssm: /laif/cicd/deploy_role_arn   # risolto a runtime da SSM (output dello stack), non incollato a mano
+  github_repo: laif-group/casartelli  # per la condition sub del trust dell'OIDC role
+  reusable_workflow: laif-group/laif-infra-workflows/.github/workflows/infra.yml@v2  # TOOL-03 reusable centralizzato pinnato
+
+# --- lista app: risolve "1 infra + N app sullo stesso account" SENZA fork di app.py (TOOL-08) ---
+# (sostituisce i blocchi TemplateStack duplicati di crif/prima-power/laif: §6 analisi/05)
+apps:
+  - name: analyzer            # naming derivato: stack=dev-analyzer-stack, domain=analyzer[-dev].app.laifgroup.com
+    backend: { autoscaling: false, monitoring: true }   # feature flag risolti dal modulo backend (altro modulo)
+    db: { private: true }                                # PRIVATE_ISOLATED by default (altro modulo)
+  - name: pilot
+    db: { private: true }
+
+# --- DNS+cert nello stack (TOOL-06): niente doppio deploy, niente DISTRIBUTION_ID a mano ---
+dns:
+  managed: true               # cert ACM DNS-validated dallo stack + record applicativi via laif-dns API/delega (TOOL-07)
+  zone_delegation: per_customer   # zona casartelli.app.laifgroup.com delegata all'account cliente (NS in laif-dns una volta)
+

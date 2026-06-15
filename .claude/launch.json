@@ -6,6 +6,12 @@
       "runtimeExecutable": "python3",
       "runtimeArgs": ["-m", "http.server", "8765", "--directory", "/Users/simonebrigante/LAIF/scratch/pm-lifecycle"],
       "port": 8765
+    },
+    {
+      "name": "infra-redesign-deck",
+      "runtimeExecutable": "python3",
+      "runtimeArgs": ["-m", "http.server", "8099", "--directory", "/Users/simonebrigante/LAIF/repo/SimoAssistant/progetti/2026-06-infra-redesign/presentazione"],
+      "port": 8099
     }
   ]
 }

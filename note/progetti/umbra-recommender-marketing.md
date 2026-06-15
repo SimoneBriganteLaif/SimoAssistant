@@ -5,13 +5,14 @@ tipo: progetto
 tag: [lavoro, laif]
 stato: attivo
 creato: 2026-06-08
-aggiornato: 2026-06-10
-fonti: ["Notion DB Progetti", "intervista /avvio 2026-06-08", "approfondimento riunioni 15/05 (Notion) 2026-06-09", "scoperta 2026-06-10 (mail WoW + incidente ETL)"]
+aggiornato: 2026-06-14
+fonti: ["Notion DB Progetti", "intervista /avvio 2026-06-08", "approfondimento riunioni 15/05 (Notion) 2026-06-09", "scoperta 2026-06-10 (mail WoW + incidente ETL)", "riunioni 11-12/06", "correzione Simone 2026-06-14"]
 correlati:
   - "[[Simone Brigante]]"
   - "[[Team Blue]]"
   - "[[Umbra]]"
   - "[[Daniele Dalle Nogare]]"
+  - "[[Davide Leonescu]]"
 ---
 
 # Umbra — Improvement recommender e modulo marketing
@@ -47,9 +48,15 @@ Nuove pagine in-app per gestire le promozioni marketing del cliente (oggi via Ex
 - **Allineamento "Promozioni WoW" — rischio stallo**: Alessandra Olivanti spingeva per inizio luglio, Bezzi (Adriano) ha un impegno la mattina del 19/06; **probabile call il 19/06**. Simone: rimandare a luglio **blocca di nuovo gli sviluppi** → obiettivo **evitare lo stallo a tutti i costi** (niente slittamento).
 - Task aperti (Daniele): import listino/budget/fatturato fornitori e storico promozioni (target 12/06).
 
+## Aggiornamenti (11-12/06)
+- **Fatturazione di giugno slitta da Q2 a Q3** (~**18.000€**): il cliente è lentissimo a fornire i dati.
+- **Call WoW di allineamento CONFERMATA venerdì 19/06** (con Adriano Bezzi + Alessandra Olivanti). Se i dati non arrivano → **si valuta stop sviluppi**.
+- **Approccio "Promozioni WOW"**: agire sui **criteri di selezione SENZA toccare il modello esistente** (considerato un "pozzo nero"); intervento sul modello = **piano B** (eventualmente con [[Davide Leonescu]] — *ipotesi*: se servisse mettere mano al modello).
+- **Presidio**: [[Daniele Dalle Nogare]].
+
 ## Referenti cliente
-- **Adriano Bezzi** — referente di **progetto principale** lato cliente.
-- **Alessandra Olivanti** — referente **marketing** (gestisce oggi le promozioni; userà le pagine WoW).
+- **Adriano Bezzi** — **Responsabile ICT** (adriano.bezzi@umbra.it), referente di progetto principale.
+- **Alessandra Olivanti** — referente **marketing** (alessandra.olivanti@umbra.it; gestisce oggi le promozioni, userà le pagine WoW).
 - **Daniele Zandrini** (IT, @umbra.it) — referente tecnico.
 
 ## Glossario di dominio (Umbra)

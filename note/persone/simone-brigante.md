@@ -5,12 +5,13 @@ tipo: persona
 tag: [lavoro, laif, team]
 stato: attivo
 creato: 2026-06-08
-aggiornato: 2026-06-10
-fonti: ["intervista /avvio 2026-06-08", "scoperta 2026-06-10"]
+aggiornato: 2026-06-14
+fonti: ["intervista /avvio 2026-06-08", "scoperta 2026-06-10", "riunioni 11-12/06"]
 correlati:
   - "[[Laif]]"
   - "[[Team Blue]]"
   - "[[Albini & Castelli — Gestione cantieri]]"
+  - "[[Benozzi — Preventivatore]]"
   - "[[Modo di lavorare — call 1:1 verticali per progetto]]"
 ---
 
@@ -22,7 +23,7 @@ Io (proprietario di questa base di conoscenza).
 - **Ruolo**: team leader di [[Team Blue]], uno dei 3 team di Laif.
 - **Mansioni**: principalmente **project management** sui progetti del team (~10 progetti attivi); su alcuni anche **operativo**.
 - Cerco di essere coinvolto su tutti i progetti del team, almeno per conoscenza.
-- Seguo personalmente [[Albini & Castelli — Gestione cantieri]] (in manutenzione).
+- Seguo personalmente [[Albini & Castelli — Gestione cantieri]] e [[Benozzi — Preventivatore]] (in manutenzione).
 - Modo di lavorare attuale: [[Modo di lavorare — call 1:1 verticali per progetto]].
 
 ## Focus attuale (giu 2026)

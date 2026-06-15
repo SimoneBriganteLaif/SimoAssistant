@@ -21,6 +21,12 @@
 | Mattia Gualandi | persona | lavoro, laif | note/persone/mattia-gualandi.md |
 | Dmitry Babich | persona | lavoro, laif | note/persone/dmitry-babich.md |
 | Matteo Scalabrini | persona | lavoro, laif | note/persone/matteo-scalabrini.md |
+| Michele Roberti | persona | lavoro, laif | note/persone/michele-roberti.md |
+| Gabriele Fogu | persona | lavoro, laif | note/persone/gabriele-fogu.md |
+| Mattia Palmucci | persona | lavoro, laif | note/persone/mattia-palmucci.md |
+| Andrea Fruttidoro | persona | lavoro, laif | note/persone/andrea-fruttidoro.md |
+| Leonardo Carboni | persona | lavoro, laif | note/persone/leonardo-carboni.md |
+| Luca Torresan | persona | lavoro, laif | note/persone/luca-torresan.md |
 | Andriani — Automazione ordini | progetto | lavoro, laif | note/progetti/andriani-automazione-ordini.md |
 | Bonfiglioli Consulting — Pianificazione carico team | progetto | lavoro, laif | note/progetti/bonfiglioli-consulting-pianificazione-carico.md |
 | CRIF — Supporto Team Silvia 2026 | progetto | lavoro, laif | note/progetti/crif-supporto-team-silvia.md |
@@ -56,9 +62,12 @@
 | Sistema PM & Staffing — roadmap interna Q2 2026 | fatto | lavoro, laif, decisione, organizzazione | note/fatti/sistema-pm-staffing.md |
 | Alessandro Grotti | persona | lavoro, laif | note/persone/alessandro-grotti.md |
 | Helia | area | lavoro, laif | note/aree/helia.md |
-| Angelo | persona | lavoro, laif | note/persone/angelo.md |
+| Angelo Longano | persona | lavoro, laif | note/persone/angelo.md |
 | Standard caselle email per cliente | concetto | lavoro, laif, interno | note/concetti/standard-email-clienti.md |
 | Sebi Group | area | lavoro, laif, cliente | note/aree/sebi-group.md |
 | Sebi Group — Acquisizione database/mailing e app export | progetto | lavoro, laif | note/progetti/sebi-group-acquisizione-database-e-app.md |
 | Roberto Bonetti | persona | lavoro, laif | note/persone/roberto-bonetti.md |
 | Letizia Maccariello | persona | lavoro, laif | note/persone/letizia-maccariello.md |
+| Roberto Zanolli | persona | lavoro, laif | note/persone/roberto-zanolli.md |
+| Benozzi | area | lavoro, laif, cliente | note/aree/benozzi.md |
+| Benozzi — Preventivatore | progetto | lavoro, laif | note/progetti/benozzi-preventivatore.md |

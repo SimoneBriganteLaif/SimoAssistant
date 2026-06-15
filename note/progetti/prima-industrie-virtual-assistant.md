@@ -5,14 +5,16 @@ tipo: progetto
 tag: [lavoro, laif]
 stato: attivo
 creato: 2026-06-08
-aggiornato: 2026-06-10
-fonti: ["scoperta 2026-06-08 (Outlook/Notion)", "intervista 2026-06-08", "approfondimento riunioni 18-19/05 (Notion) 2026-06-09", "scoperta 2026-06-10 (Outlook + call allineamento 10/06)"]
+aggiornato: 2026-06-14
+fonti: ["scoperta 2026-06-08 (Outlook/Notion)", "intervista 2026-06-08", "approfondimento riunioni 18-19/05 (Notion) 2026-06-09", "scoperta 2026-06-10 (Outlook + call allineamento 10/06)", "riunioni 11-12/06 (demo locale)"]
 correlati:
   - "[[Prima Industrie]]"
   - "[[Marco Pinelli]]"
   - "[[Carlo Venditti]]"
   - "[[Simone Brigante]]"
   - "[[Laif Agent]]"
+  - "[[Cristiano Piscioneri]]"
+  - "[[Marco Vita]]"
 ---
 
 # Prima Industrie — Virtual Assistant
@@ -52,6 +54,12 @@ Assistente virtuale / knowledge assistant su **~1,5 TB di documenti (~300.000 fi
 - **Feedback**: stelline di accuratezza mantenute per continuità col benchmark del pilota + feedback negativo guidato obbligatorio (info mancanti / errate / fraintendimento) + export massivo.
 - **Accessi**: SSO Microsoft con utenze pre-create; profili *tecnico di service* (visibilità per filiale, da DB PST) vs *manager/Global Support* (worldwide). Benchmark a ~190 domande (manca il contributo di "Tuomas/Thomas Koski"). Validazione knowledge col Global Support prima dell'apertura agli utenti. Vincolo: ferie Finlandia da metà luglio.
 - [[Marco Pinelli]] in ferie nella settimana dell'8/06 (rientro ~15/06); copre [[Carlo Venditti]].
+
+## Aggiornamenti (11-12/06)
+- **Lo scope reale DIVERGE da quanto scritto a contratto**: si prosegue così finché il cliente non lo contesta formalmente (modalità di **contenimento**, con [[Carlo Venditti]] + [[Cristiano Piscioneri]]).
+- **Edward** (referente cliente) **non scrive da ~1 mese** → quel filone sembra **fermo**.
+- **SSO riciclato da Prima Power** (3 parametri in Parameter Store, utenti creati a mano); i **coni di visibilità** = filtri dati per utente, servono le **regole da Edward** (in Excel).
+- **Demo locale fatta 11/06**; **accesso utenti da lunedì** (subordinato al processamento dati). **Go/no-go target fine giugno.** Spinta del founder [[Marco Vita]] per **accelerare la migrazione a Bedrock**.
 
 ## Timeline
 - **Kick-off cliente: giovedì 21/05** (56 persone).

@@ -5,14 +5,15 @@ tipo: progetto
 tag: [lavoro, laif]
 stato: attivo
 creato: 2026-06-08
-aggiornato: 2026-06-10
-fonti: ["Notion DB Progetti", "intervista /avvio 2026-06-08", "approfondimento riunioni 15-18/05 (Notion) 2026-06-09"]
+aggiornato: 2026-06-14
+fonti: ["Notion DB Progetti", "intervista /avvio 2026-06-08", "approfondimento riunioni 15-18/05 (Notion) 2026-06-09", "riunioni 11-12/06"]
 correlati:
   - "[[Simone Brigante]]"
   - "[[Team Blue]]"
   - "[[Nivi]]"
   - "[[Federico Frasca]]"
   - "[[Tancredi Bosi]]"
+  - "[[Andrea Mordenti]]"
 ---
 
 # Nivi — Automazione Risposta Mail
@@ -42,9 +43,13 @@ Il cliente chiama l'app **"Live Pro" / "LIFE"** (≠ la CLI interna `laif`). Cat
 - **16/06 giornata on-site a Firenze** ("LAIF in casa Nivi", con Simone, [[Andrea Mordenti]] e Federico) sul nuovo flusso del customer care; obiettivo **upsell dashboard** con KPI semplici (mail processate, status, operatori attivi) — Federico prepara la lista upsell, Simone porta l'iPad per disegnarla col cliente. Verificare se "Andrea" (Mordenti) partecipa.
 - Nuova richiesta di Alessandro (Michaelsson): rimuovere il raggruppamento in hyperthread — da chiarire.
 
+## Aggiornamenti (11-12/06)
+- **On-site a Firenze martedì 16/06** ([[Simone Brigante]] + [[Federico Frasca]], forse [[Andrea Mordenti]]).
+- In ballo un **contratto più grande (rifacimento software)** oltre a: chiusura **dashboard** + **evolutive** (invio mail dall'app, categorizzazione).
+
 ## Referenti cliente
 - **Alessandro Michaelsson** (alessandro.michaelsson@nivi.it) — molto sollecito (invia i pacchetti PST, chiede di aggiungere caselle).
-- **Erika Giovannuzzi** — responsabile / gestione email lato cliente (scrive sul tema "autostrade"; apre ticket).
+- **Erika Giovannuzzi** (erika.giovannuzzi@nivi.it) — responsabile / gestione email lato cliente (scrive sul tema "autostrade"; apre ticket).
 - **Federico** — *admin* lato cliente (≠ [[Federico Frasca]]). **Roberto** — commerciale/tecnico cliente.
 
 ## Nota

@@ -1,0 +1,917 @@
+[
+  {
+    "key": "NET",
+    "title": "Networking & VPC",
+    "module": "networking",
+    "purpose": "Fornisce la VPC di base e tutto il layer di rete della nuova libreria, sostituendo networks.py (oggi VpcWithSubnet con UNA sola SubnetConfiguration PUBLIC: niente subnet private possibili, RDS in pubblico, zero flow logs, niente endpoint a parte i due gateway gratis). Risolve i problemi del brief #6 (DB non in rete privata) e parte del #1 (visibilità di rete via flow logs) e abilita strutturalmente NETSEC-01 (workload+RDS in subnet private) e COST-IPV4-REDUCE (eliminare gli IP pubblici di RDS/EC2). Implementa NETSEC-01 e NETSEC-07. Coerente con la decisione strategica #1 (isolamento account MANTENUTO, niente consolidamento VPC): l'egress delle subnet private si fa con INTERFACE ENDPOINTS per-account, non con NAT condiviso; RDS in PRIVATE_ISOLATED senza egress. Corregge il bug Lambda-in-VPC (SubnetType.PRIVATE inesistente in lambdas.py:61,118) esponendo helper di subnet-selection corretti. E' il modulo da cui dipendono ecs/rds/alb/lambda/jobs: tutti consumano la sua topologia a tre tier (public solo ALB, private ECS/Lambda con egress via endpoint, isolated RDS).",
+    "constructs": [
+      {
+        "name": "LaifVpc",
+        "role": "Construct principale: crea una VPC a 3 tier con SubnetConfiguration multiple (public=solo ALB, private=ECS/Lambda con egress, isolated=RDS), 2 AZ di default, gateway endpoint S3+DynamoDB gratis, Flow Logs ON, e (in base al feature flag egress) gli interface endpoint per-account. Espone proprieta' tipizzate vpc, subnets_public, subnets_private, subnets_isolated e i metodi di selezione subnet corretti. Costruisce internamente VpcEndpoints e VpcFlowLogs.",
+        "key_params": "vpc_cidr='10.0.0.0/16' (default; /16 lascia spazio a 3 tier x AZ) | max_azs=2 (default; era 3 -> -1 NAT/AZ e meno ENI, multi_az per RDS resta opzionale via SCALE-07) | egress_mode='interface-endpoints' (default sicuro: nessuna rotta a internet; alternative 'nat-instance' | 'none') | flow_logs=True ON di default (traffic_type configurabile, default REJECT) | flow_logs_traffic_type='REJECT' (default economico; 'ALL' opt-in) | flow_logs_retention=14 giorni (default contenuto) | nat_az_count=1 (solo se egress_mode='nat-instance': una sola fck-nat per risparmiare) | subnet_cidr_mask=24"
+      },
+      {
+        "name": "VpcEndpoints",
+        "role": "Sub-construct che materializza gli endpoint. Sempre: gateway endpoint S3 e DynamoDB (gratis, niente costo/GB sul traffico verso S3/Dynamo). Se egress_mode='interface-endpoints': i 5 interface endpoint nelle subnet private (ECR api, ECR dkr, CloudWatch Logs, Secrets Manager, SSM, STS) con private_dns_enabled=True e un SG dedicato che apre 443 solo dal CIDR della VPC. Permette di abilitare endpoint extra a config (es. bedrock-runtime, kms, sqs).",
+        "key_params": "interface_endpoints=['ecr.api','ecr.dkr','logs','secretsmanager','ssm','sts'] (set minimo di default che copre il pattern LAIF: pull immagine+log+secret) | extra_interface_endpoints=[] (es. 'bedrock-runtime' per i progetti GenAI in crescita, 'kms','sqs') | gateway_endpoints=['s3','dynamodb'] (sempre ON, gratis) | private_dns_enabled=True ON | sg_ingress_cidr=<vpc_cidr> (443 solo dalla VPC, non dal mondo)"
+      },
+      {
+        "name": "FckNatProvider (wrapper)",
+        "role": "Wrapper attorno a ec2.NatProvider/AMI fck-nat (t4g.nano) usato SOLO quando egress_mode='nat-instance', per i pochi casi con egress internet vero (chiamate a API esterne non-AWS). Una sola istanza in 1 AZ di default (nat_az_count=1) ~3-4$/mese contro i ~32$/mese del NAT Gateway managed. Off di default.",
+        "key_params": "instance_type='t4g.nano' | nat_az_count=1 | enabled solo se egress_mode='nat-instance' (default OFF) | source/dest check disabilitato dal provider"
+      },
+      {
+        "name": "VpcFlowLogs (interno a LaifVpc)",
+        "role": "Abilita i VPC Flow Logs verso un LogGroup CloudWatch dedicato con retention contenuta. Default REJECT (vede tentativi bloccati = segnale di sicurezza utile a costo minimo); ALL opt-in per debugging di rete. Implementa NETSEC-07. Il LogGroup puo' essere referenziato dal modulo monitoring per arricchire Wolico.",
+        "key_params": "traffic_type=REJECT (default) | destination=CloudWatch Logs | retention=14 giorni (default) | removal_policy=DESTROY sul LogGroup (i flow log non sono dato di business)"
+      },
+      {
+        "name": "subnets_for(tier) / subnet_selection helper",
+        "role": "Metodo pubblico che restituisce la ec2.SubnetSelection corretta per un dato tier semantico ('public'|'private'|'isolated'), cosi' i moduli ecs/rds/lambda non manipolano direttamente i SubnetType e si chiude alla radice il bug Lambda-in-VPC. Mappa 'private'->PRIVATE_WITH_EGRESS (o PRIVATE_ISOLATED se egress_mode='none'/'interface-endpoints' senza NAT), 'isolated'->PRIVATE_ISOLATED, 'public'->PUBLIC. Valida che il tier richiesto esista.",
+        "key_params": "tier: Literal['public','private','isolated'] | ritorna ec2.SubnetSelection | solleva ValueError se il tier non e' configurato (no piu' SubnetType inesistente che fallisce silenziosamente)"
+      },
+      {
+        "name": "ImportedLaifVpc",
+        "role": "Variante che importa una VPC esistente via from_vpc_attributes (sostituisce VpcImported/VpcFromAttributes, supporta Tokens/cross-stack) esponendo la STESSA interfaccia subnets_for() di LaifVpc, per la migrazione graduale dei clienti gia' deployati senza riscrivere i moduli consumer.",
+        "key_params": "vpc_id (token-safe) | availability_zones | public/private/isolated_subnet_ids | egress_mode (per coerenza del subnet_selection)"
+      }
+    ],
+    "config_yaml": "networking:\n  # CIDR e dimensionamento (default sicuri: /16, 2 AZ)\n  vpc_cidr: \"10.0.0.0/16\"\n  max_azs: 2                       # 2 = multi-AZ minimo; alza a 3 solo se serve\n\n  # FEATURE FLAG egress delle subnet private (decisione strategica #1: account isolati)\n  # interface-endpoints = default sicuro, niente rotta a internet, niente NAT\n  # nat-instance        = fck-nat t4g.nano (~3-4$/mese) per egress internet VERO\n  # none                = nessun egress (tutto isolated; usabile per account ultra-chiusi)\n  egress_mode: \"interface-endpoints\"\n\n  endpoints:\n    interface:                     # i 5+ endpoint per-account che sostituiscono il NAT\n      - ecr.api\n      - ecr.dkr\n      - logs\n      - secretsmanager\n      - ssm\n      - sts\n    extra_interface: []            # es. [\"bedrock-runtime\"] sui progetti GenAI, [\"kms\",\"sqs\"]\n    gateway:                       # sempre gratis, lasciare ON\n      - s3\n      - dynamodb\n\n  nat_instance:                    # usato SOLO se egress_mode: nat-instance\n    instance_type: \"t4g.nano\"\n    az_count: 1                    # una sola istanza per contenere il costo\n\n  flow_logs:                       # NETSEC-07, ON di default\n    enabled: true\n    traffic_type: \"REJECT\"         # REJECT (economico) | ALL (debug) | ACCEPT\n    retention_days: 14\n\n# --- override per ambiente (la \"configurabilita' per ambiente\" che oggi non esiste) ---\nenvironments:\n  dev:\n    networking:\n      flow_logs: { traffic_type: \"REJECT\", retention_days: 7 }\n      # un dev che non parla con API esterne puo' restare a interface-endpoints\n  prod:\n    networking:\n      max_azs: 3                   # piu' resilienza in prod (abilita anche Multi-AZ RDS lato modulo rds)\n      flow_logs: { traffic_type: \"ALL\", retention_days: 30 }",
+    "defaults_flipped": [
+      "Topologia subnet: da UNICA SubnetConfiguration PUBLIC (networks.py:56-62) a 3 tier public(solo ALB)+private(ECS/Lambda)+isolated(RDS). Conseguenza diretta: RDS non e' piu' publicly_accessible (chiude brief #6 + i bloccanti di sicurezza §6.1).",
+      "default_subnet_type: da ec2.SubnetType.PUBLIC a nessun default singolo (i moduli chiedono il tier semantico via subnets_for()).",
+      "max_azs: da 3 a 2 (riduce gli AZ -> meno IP, meno ENI degli interface endpoint duplicati per AZ; 3 resta opt-in per prod).",
+      "VPC Flow Logs: da ASSENTI a ON di default (REJECT, retention 14gg) -> implementa NETSEC-07.",
+      "Egress: da 'tutto in subnet pubblica con IP pubblico' a 'interface endpoints per-account, nessuna rotta a internet di default' (allineato a decisione #1: isolamento account, niente NAT condiviso).",
+      "RDS subnet: PUBLIC -> PRIVATE_ISOLATED (no egress, costo NAT zero) tramite il tier 'isolated' che il modulo rds consuma.",
+      "Lambda-in-VPC: il branch morto su SubnetType.PRIVATE (inesistente, lambdas.py:61,118) e' sostituito da subnets_for('private') che ritorna la SubnetSelection valida -> Lambda finisce davvero in subnet private, non in pubblico ne' fallisce."
+    ],
+    "feature_flags": [
+      {
+        "flag": "egress_mode",
+        "default": "interface-endpoints",
+        "effect": "Decide come escono le subnet private. 'interface-endpoints' (default sicuro): crea i 5 interface endpoint per-account (~36$/mese/account totali), nessuna rotta a internet, copre pull immagine ECR + log + secret + SSM/STS. 'nat-instance': nessun interface endpoint generale, una fck-nat t4g.nano (~3-4$/mese) per egress internet vero verso API non-AWS. 'none': nessun egress, tutto isolated."
+      },
+      {
+        "flag": "flow_logs.enabled",
+        "default": "true",
+        "effect": "ON crea il LogGroup CloudWatch + Flow Logs (NETSEC-07). OFF risparmia il costo di ingestione log (consigliato lasciare ON: il traffico REJECT e' minimo)."
+      },
+      {
+        "flag": "flow_logs.traffic_type",
+        "default": "REJECT",
+        "effect": "REJECT logga solo i pacchetti bloccati (segnale di sicurezza a costo minimo). ALL logga tutto (debug di rete, costo maggiore). ACCEPT via di mezzo."
+      },
+      {
+        "flag": "endpoints.interface",
+        "default": "[ecr.api, ecr.dkr, logs, secretsmanager, ssm, sts]",
+        "effect": "Set degli interface endpoint creati quando egress_mode='interface-endpoints'. Rimuoverne riduce il costo ma puo' rompere pull immagine/log/secret. ssm+sts servono a ECS Exec e all'assunzione ruoli senza internet."
+      },
+      {
+        "flag": "endpoints.extra_interface",
+        "default": "[]",
+        "effect": "Endpoint aggiuntivi opt-in (es. bedrock-runtime per i progetti GenAI in crescita citati nella baseline, kms, sqs) senza dover aprire egress internet."
+      },
+      {
+        "flag": "max_azs",
+        "default": "2",
+        "effect": "Numero di AZ. 2 = costo/ENI minimi con resilienza base; 3 = piu' resilienza (consigliato prod) ma triplica gli ENI degli interface endpoint e gli IP."
+      },
+      {
+        "flag": "nat_instance.az_count",
+        "default": "1",
+        "effect": "Quante fck-nat creare quando egress_mode='nat-instance'. 1 = piu' economico ma single-AZ per l'egress; 2 = HA dell'egress a costo doppio."
+      }
+    ],
+    "depends_on": [
+      "config/values.yaml (TOOL-08): il modulo legge il blocco networking dalla scheda unica; e' la SSOT dei feature flag",
+      "monitoring (consumer, non hard-dep): puo' referenziare il LogGroup dei Flow Logs e in futuro le metriche degli endpoint per arricchire Wolico",
+      "Nessuna dipendenza da altri moduli infra: networking e' alla radice del grafo; ecs/rds/alb/lambda/jobs dipendono DA lui (consumano vpc + subnets_for())"
+    ],
+    "implements": [
+      "NETSEC-01",
+      "NETSEC-07"
+    ],
+    "migration_notes": "Ordine e rischi per migrare i ~60 account esistenti (tutti oggi su VPC mono-subnet-pubblica). RISCHIO CHIAVE: cambiare la topologia di una VPC esistente forza la RICREAZIONE della VPC e di tutto cio' che ci sta dentro (RDS, ECS, ALB) -> non e' un update in-place. Per questo: (1) NON tentare di mutare la VPC legacy. Usare ImportedLaifVpc per i clienti finche' non si fa un cutover pianificato, cosi' i nuovi moduli girano sopra la rete esistente senza ricrearla. (2) I clienti NUOVI (es. Casartelli/GreenEnergy, ancora day-zero a 0$) nascono direttamente su LaifVpc a 3 tier: nessuna migrazione, e' lo stato target. (3) Cutover per cliente esistente = nuovo account/stack target con LaifVpc -> migrazione dati RDS (snapshot restore in subnet isolated) -> swap DNS via laif-dns -> dismissione vecchio. Questo elimina anche l'EIP pubblico di RDS (COST-IPV4-REDUCE) e la publicly_accessible (chiude il bloccante di sicurezza). (4) PRIMA del cutover correggere i moduli consumer per usare subnets_for(): senza, il bug Lambda-in-VPC resta. (5) Validare che gli interface endpoint coprano davvero le dipendenze dell'app: se un'app chiama un'API esterna non-AWS (es. provider email, webhook), va messa egress_mode='nat-instance' o aggiunto l'endpoint specifico, altrimenti l'app perde connettivita' uscente nelle subnet private (errore tipico in migrazione). (6) Costo: +~36$/mese/account di interface endpoint contro il risparmio di IPv4 pubblici (442$/mese fleet) e l'eliminazione del rischio sicurezza; per account che non hanno bisogno di egress generico gli endpoint sono piu' economici e piu' sicuri del NAT. (7) Sequenza consigliata: 2-3 account dev pilota -> verifica connettivita' e flow logs -> rollout dev -> prod uno per uno con finestra.",
+    "preserve": [
+      "I due gateway endpoint S3+DynamoDB gratis gia' presenti (networks.py:70-77): mantenuti e resi configurabili",
+      "Il pattern di import VPC esistente (VpcImported/VpcFromAttributes con from_vpc_attributes token-safe): consolidato in ImportedLaifVpc per la migrazione graduale",
+      "L'idea del filtro/flag per attivare-disattivare parti (seme della modularita' on/off, findings §7): qui diventa egress_mode + i flag endpoint/flow_logs",
+      "Assenza di NAT come default economico (findings §7): rispettata via interface-endpoints (no NAT) come default, NAT solo fck-nat opt-in"
+    ],
+    "open_questions": "1) Standard CIDR di flotta: ha senso assegnare CIDR distinti per account (in vista di un eventuale peering futuro) o si lascia 10.0.0.0/16 ovunque dato che gli account sono isolati e non si parlano? Default attuale: stesso /16, va bene finche' niente peering. 2) ECS Exec: si vuole supportarlo di default? Se si', ssm+ssmmessages+ec2messages vanno tra gli interface endpoint (oggi ho incluso ssm+sts, ma ECS Exec completo richiede anche ssmmessages); confermare. 3) Dev alleggeriti: la domanda aperta dello STATO ('isolamento anche per i dev?') impatta qui: se i dev possono condividere egress si potrebbe valutare egress_mode='nat-instance' single-AZ condivisa, ma viola 'niente consolidamento' -> per ora tengo interface-endpoints anche in dev. 4) bedrock-runtime: con Bedrock in crescita (38$/mese), lo metto tra gli extra_interface di default per i progetti GenAI o resta opt-in per progetto? 5) Costo reale interface endpoint con 2 AZ: ~36$/mese e' a ~7,3$/endpoint ma e' per-AZ-ENI; con max_azs=2 il conto raddoppia gli ENI -> verificare se per i 5 endpoint conviene 1 AZ per gli endpoint anche con 2 AZ di subnet."
+  },
+  {
+    "key": "DATA",
+    "title": "Dati / RDS",
+    "module": "data_rds (laif_infra.modules.data.rds)",
+    "purpose": "Modulo Dati/RDS della nuova libreria infra LAIF: sostituisce db.py di laif-cdk fornendo un RDS PostgreSQL sicuro-by-default e config-driven. Risolve direttamente il bug di sicurezza bloccante #6 del brief / NETSEC-01 (DB pubblico): RDS nasce in PRIVATE_ISOLATED, mai publicly_accessible, e accetta ingress SOLO dal Security Group del backend (niente IP pubblici hardcoded, niente add_ingress_rule('ANY') con print). Chiude il \"zero monitoring\" lato DB del brief #1 (MON-01/MON-03): Performance Insights + Enhanced Monitoring + log exports ON di default, 4+ alarm CloudWatch (FreeableMemory, CPUCreditBalance/CPUUtilization, FreeStorageSpace, DatabaseConnections) instradati a SNS verso l'ingest di Wolico. Abilita la risposta corretta ai down (brief #3 / SCALE-07) con Multi-AZ come feature flag solo-prod, invece dello scale-up a mano. Offre leve FinOps per ambiente: backup retention configurabile (COST-RDS-BACKUP-RETENTION, dev 7gg / prod >=14) e auto-turnoff dev (COST-RDS-DEV-TURNOFF). Conserva le cose buone di laif-cdk (findings §7): storage_encrypted, deletion_protection, RemovalPolicy.RETAIN, backup, GP3 storage-autoscaling, secret generato in Secrets Manager. Rispetta l'isolamento per-account (nessun consolidamento): RDS PRIVATE_ISOLATED non ha bisogno di egress, quindi zero costo NAT.",
+    "constructs": [
+      {
+        "name": "PostgresDatabase",
+        "role": "Construct principale: crea l'istanza RDS PostgreSQL in PRIVATE_ISOLATED con tutti i default sicuri, il SG dedicato, il secret in Secrets Manager (riusato dal modulo backend per le env var), Enhanced Monitoring role, e (via composizione interna di RdsAlarms) gli alarm. Espone proprietà pulite: .instance (rds.IDatabaseInstance), .security_group, .secret, .endpoint_address, .endpoint_port, .database_name. Metodo pubblico allow_from(peer_sg: ec2.ISecurityGroup) per aprire la porta SOLO da un SG (tipicamente il SG del servizio ECS backend). NON esiste piu' add_ingress_rule(ip) ne' il ramo 'ANY'.",
+        "key_params": "config: RdsConfig (pydantic, vedi sotto) [obbligatorio]; vpc: ec2.IVpc [obbligatorio]; alarm_topic: sns.ITopic|None=None (il topic verso Wolico fornito dal modulo monitoring; se None gli alarm vengono creati ma senza azione, log warning). Tutto il resto viene dalla config, niente kwargs **rds_props passanti (interfaccia chiusa)."
+      },
+      {
+        "name": "RdsConfig",
+        "role": "Modello pydantic v2 che mappa 1:1 il blocco YAML database del values.yaml ed e' l'UNICA superficie di configurazione. Valida i vincoli per ambiente (es. multi_az solo prod, backup_retention_days dev<prod) e calcola i default sicuri. environment (dev|staging|prod) e' iniettato dal contesto, non ripetuto nel blocco.",
+        "key_params": "engine_version: str='16.4' (no major upgrade auto: allow_major_version_upgrade default False, ON in laif-cdk era un rischio); instance_class: str='db.t4g.micro' (dev) | derivato per prod; allocated_storage_gb=20 (default ON, GP3); max_allocated_storage_gb=100 (GP3 autoscaling, ON di default = conservato); storage_encrypted=True (ON, hard, non disattivabile); deletion_protection: derivato da env (prod True hard, dev configurabile default True); backup_retention_days: derivato (dev 7, prod 14, vedi feature flag); performance_insights=True (ON); enhanced_monitoring_interval_s=60 (ON); log_exports=['postgresql','upgrade'] (ON); multi_az=False (flag, vedi sotto); auto_turnoff=False (flag dev); secret_rotation=False (flag); shared_multi_schema=False (flag dev, default no — vedi note)."
+      },
+      {
+        "name": "RdsAlarms",
+        "role": "Construct interno (componibile, riusabile anche dal modulo monitoring) che crea i 4+ alarm CloudWatch sulle metriche AWS/RDS dell'istanza e li collega al topic SNS di ingest Wolico. Implementa MON-01 (parte RDS) e MON-03. Le soglie sono per-metrica con default sensati e override da YAML.",
+        "key_params": "freeable_memory_min_bytes (default ~10% della RAM dell'instance class, calcolato; ON); cpu_credit_balance_min (default 20, ON solo su classi t* burstable; su classi non-burstable usa cpu_utilization_max=85% ON); free_storage_space_min_bytes (default max(2GB, 10% allocated); ON); db_connections_max (default ~80% del max_connections derivato dalla RAM; ON); evaluation_periods=3, period=Duration.minutes(5); tutti gli alarm con treat_missing_data=BREACHING per memoria/disco. on/off: il set e' attivabile via monitoring flag (default ON)."
+      },
+      {
+        "name": "RdsSecurityGroup",
+        "role": "SG dedicato all'istanza, creato dal modulo, SENZA regole di ingress all'atto della creazione (default-deny). allow_all_outbound=False (in PRIVATE_ISOLATED non serve egress; ribalta il allow_all_outbound=True di laif-cdk). Le regole di ingress si aggiungono SOLO via allow_from(peer_sg) -> porta 5432 dal SG passato. Niente Peer.any_ipv4(), niente Peer.ipv4(<ip pubblico>).",
+        "key_params": "vpc [obbligatorio]; port=5432 (da config); allow_all_outbound=False (ON, ribaltato); descrizione e nome derivati da {env}-{customer}-{app}-db-sg."
+      },
+      {
+        "name": "RdsDevTurnoff",
+        "role": "Construct opzionale (creato solo se auto_turnoff=True e env=dev) che implementa COST-RDS-DEV-TURNOFF in modo CDK-owned (niente piu' tag 'Auto-TurnOff=True' letto da uno script imperativo esterno): EventBridge Scheduler stop la sera + start la mattina via Lambda che chiama rds:StopDBInstance/StartDBInstance, con IAM role minimale. Sostituisce il meccanismo a tag deployato-ma-OFF di laif-cdk con uno esplicito e versionato.",
+        "key_params": "stop_cron='cron(0 20 ? * MON-FRI *)' (default 20:00 feriali), start_cron='cron(0 7 ? * MON-FRI *)' (default 07:00 feriali), timezone='Europe/Rome'; bloccato hard se env=prod (raise in validazione). Default OFF."
+      }
+    ],
+    "config_yaml": "database:\n  # --- identita' (il resto e' derivato da env + customer dal contesto) ---\n  app: backend            # consente piu' DB nello stesso account (vincolo 1-infra-2-app)\n  name: app_db            # database_name iniziale\n  port: 5432\n\n  # --- sizing / storage (GP3 autoscaling conservato da laif-cdk) ---\n  engine_version: \"16.4\"\n  instance_class: db.t4g.micro     # prod tipicamente db.t4g.small/medium\n  allocated_storage_gb: 20\n  max_allocated_storage_gb: 100    # 0 per disattivare l'autoscaling storage\n  allow_major_version_upgrade: false\n\n  # --- sicurezza (default ON, NON serve scriverli) ---\n  # storage_encrypted: true        # hard ON, non disattivabile\n  # subnet: PRIVATE_ISOLATED       # hard, non c'e' piu' l'opzione PUBLIC\n  deletion_protection: true        # prod: forzato true comunque\n\n  # --- FEATURE FLAG ---\n  multi_az: false                  # vero solo in prod; in dev viene rifiutato\n  auto_turnoff: false              # solo dev: stop/start schedulato (COST-RDS-DEV-TURNOFF)\n  secret_rotation: false           # rotazione automatica del secret master\n  monitoring: true                 # PI + Enhanced Mon + log + alarm (default ON)\n  shared_multi_schema: false       # vedi open_questions: di norma NO (isolamento account)\n\n  # --- backup (per-ambiente, COST-RDS-BACKUP-RETENTION) ---\n  backup_retention_days: null      # null = default per env (dev 7, prod 14); >=14 in prod\n\n  # --- override soglie alarm (opzionali; default calcolati dall'instance class) ---\n  alarms:\n    free_storage_space_min_gb: 2\n    db_connections_max: null       # null = 80% del max derivato dalla RAM\n    cpu_utilization_max_pct: 85    # usato solo su classi non-burstable\n\n  # --- override scheduler turnoff (solo se auto_turnoff: true) ---\n  turnoff:\n    stop_cron: \"cron(0 20 ? * MON-FRI *)\"\n    start_cron: \"cron(0 7 ? * MON-FRI *)\"\n    timezone: Europe/Rome",
+    "defaults_flipped": [
+      "subnet_type: ec2.SubnetType.PUBLIC -> ec2.SubnetType.PRIVATE_ISOLATED (e l'opzione PUBLIC viene rimossa del tutto; addio publicly_accessible=true). Risolve NETSEC-01 parte DB / brief #6",
+      "Security Group ingress: add_ingress_rule(ip) con ramo 'ANY' (Peer.any_ipv4 + print) -> RIMOSSO. Solo allow_from(peer_sg) SG-to-SG. Niente piu' IP pubblici hardcoded ne' apertura al mondo",
+      "security_group allow_all_outbound: True -> False (in PRIVATE_ISOLATED non c'e' egress, nessun bisogno)",
+      "enable_performance_insights: False -> True (ON di default, MON-03)",
+      "Enhanced Monitoring: assente -> ON, interval 60s con monitoring role dedicato (MON-03)",
+      "cloudwatch_logs_exports: None -> ['postgresql','upgrade'] (ON, MON-03)",
+      "Alarm CloudWatch: NESSUNO in tutta la libreria -> 4+ alarm di default su FreeableMemory/CPU/FreeStorageSpace/DatabaseConnections verso SNS->Wolico (MON-01)",
+      "allow_major_version_upgrade: True -> False (default sicuro; l'upgrade major e' una scelta esplicita, non automatica — mitiga sorprese tipo Nivi 15->17)",
+      "backup_retention: hard floor 14gg per TUTTI (raise se <14) -> per-ambiente: dev default 7gg (consentito), prod default e minimo 14gg (COST-RDS-BACKUP-RETENTION)",
+      "Multi-AZ: inesistente -> feature flag esplicito, attivabile solo in prod (SCALE-07)",
+      "Interfaccia: **rds_props passante (DatabaseInstanceProps arbitrari) -> RIMOSSO; superficie chiusa e validata via RdsConfig pydantic"
+    ],
+    "feature_flags": [
+      {
+        "flag": "multi_az",
+        "default": "False",
+        "effect": "Se True abilita Multi-AZ sull'istanza RDS (standby in altra AZ, failover gestito). Raddoppia il costo istanza -> mai default di flotta. Validazione: rifiutato (raise) se environment != prod (SCALE-07)."
+      },
+      {
+        "flag": "monitoring",
+        "default": "True",
+        "effect": "Se True: Performance Insights ON, Enhanced Monitoring (60s) ON, log exports ON, e crea il set RdsAlarms collegato al topic SNS verso Wolico. Se False: niente PI/EM/alarm (sconsigliato, solo per casi limite o dev throwaway). Implementa MON-01/MON-03."
+      },
+      {
+        "flag": "auto_turnoff",
+        "default": "False",
+        "effect": "Solo dev: crea RdsDevTurnoff (EventBridge Scheduler + Lambda stop/start) per spegnere il DB fuori orario (COST-RDS-DEV-TURNOFF, ~150-250 $/mese di flotta). Validazione: rifiutato se environment == prod. Incompatibile con multi_az."
+      },
+      {
+        "flag": "secret_rotation",
+        "default": "False",
+        "effect": "Se True abilita la rotazione automatica del secret master via rds.DatabaseInstance.add_rotation_single_user (rotation Lambda gestita). In PRIVATE_ISOLATED la rotation Lambda richiede gli interface endpoint Secrets Manager/STS del modulo networking -> dipendenza da verificare a deploy."
+      },
+      {
+        "flag": "deletion_protection",
+        "default": "True",
+        "effect": "Conservato da laif-cdk. Forzato True in prod (override ignorato con warning); in dev puo' essere messo a False per facilitare il teardown. RemovalPolicy resta sempre RETAIN."
+      },
+      {
+        "flag": "shared_multi_schema",
+        "default": "False",
+        "effect": "Sperimentale e SCONSIGLIATO: un DB unico multi-schema condiviso tra app dev. Di norma NON applicabile per l'isolamento account (1 account/cliente) -> ha senso solo tra piu' app NELLO STESSO account dev (vincolo 1-infra-2-app). Default OFF, vedi open_questions."
+      },
+      {
+        "flag": "max_allocated_storage_gb",
+        "default": "100 (>0 = ON)",
+        "effect": "GP3 storage autoscaling conservato da laif-cdk. Se 0 disattiva l'autoscaling dello storage (allocazione fissa)."
+      }
+    ],
+    "depends_on": [
+      "networking (fornisce la VPC con subnet PRIVATE_ISOLATED; con isolamento account gli interface endpoint ECR/Logs/Secrets/SSM/STS servono al backend/task, mentre RDS in PRIVATE_ISOLATED non ha egress quindi nessun endpoint richiesto per l'istanza base — solo secret_rotation richiede l'endpoint Secrets Manager+STS)",
+      "monitoring (fornisce il topic SNS di ingest verso Wolico, passato come alarm_topic; il modulo monitoring possiede il routing maintainer di Wolico)",
+      "backend/ECS (consumatore: passa il proprio SG a PostgresDatabase.allow_from() e legge .secret/.endpoint_address/.endpoint_port per le env var dell'app)",
+      "config/values.yaml (TOOL-08: il blocco 'database' del values.yaml unico e' la SSOT da cui RdsConfig viene idratato; environment iniettato dal contesto)"
+    ],
+    "implements": [
+      "NETSEC-01 (parte DB): RDS in PRIVATE_ISOLATED, no publicly_accessible, SG solo-da-SG-backend",
+      "MON-01 (parte RDS): 4+ alarm CloudWatch -> SNS -> Wolico",
+      "MON-03: Performance Insights + Enhanced Monitoring + log exports ON di default",
+      "SCALE-07: Multi-AZ RDS opzionale, feature flag solo prod",
+      "COST-RDS-BACKUP-RETENTION: backup retention per-ambiente (dev 7gg / prod >=14)",
+      "COST-RDS-DEV-TURNOFF: auto-turnoff dev come feature flag CDK-owned (EventBridge Scheduler + Lambda)"
+    ],
+    "migration_notes": "Migrazione per i ~24 clienti esistenti (oggi tutti con RDS PUBBLICO da db.py:72). Ordine e rischi:\n1) PRE-REQUISITO (modulo networking): la VPC deve avere subnet PRIVATE_ISOLATED. Oggi le VPC hanno SOLO subnet pubbliche (networks.py:56-62). Spostare un'istanza RDS esistente da subnet pubblica a privata in CloudFormation comporta un REPLACE dell'istanza (cambio di vpc_subnets) -> NON in-place. Per un DB con dati questo e' inaccettabile senza una strategia dati. Tre strade, in ordine di sicurezza:\n   (a) CONSIGLIATA: snapshot -> ripristino in subnet privata via PostgresRdsFromSnapshot-equivalente del nuovo modulo, durante finestra di manutenzione; cutover endpoint nel secret/env del backend. Downtime breve e controllato.\n   (b) Aggiungere le subnet private alla VPC e usare il modify del DB subnet group: AWS consente di passare a un subnet group che include le AZ; tuttavia togliere publicly_accessible (modify -> false) e' un'operazione in-place a basso rischio che andrebbe fatta PRIMA come quick-win NETSEC-01, indipendente dal nuovo modulo. Poi il REPLACE per il subnet group privato resta comunque necessario.\n   (c) Convivenza: il nuovo modulo puo' adottare un'istanza esistente via from_database_instance_attributes per gestire SG/alarm senza ricrearla, rimandando lo spostamento di subnet a una finestra dedicata.\n2) DELETION_PROTECTION + RemovalPolicy.RETAIN (conservati) proteggono dai drop accidentali durante la migrazione: bene, ma significa che un REPLACE lascia orfana la vecchia istanza -> va de-protetta e cancellata a mano dopo il cutover verificato (operazione una-tantum, documentata).\n3) SECURITY GROUP: oggi molti DB hanno regole di ingress da IP pubblici / 'ANY' (add_ingress_rule). Alla migrazione queste spariscono: BISOGNA prima mappare il SG del backend e chiamare allow_from(backend_sg). Se qualche client/strumento esterno (es. un IP di ufficio, una pipeline) accede al DB direttamente, va censito PRIMA o si rompe l'accesso. Per accessi amministrativi temporanei usare SSM port forwarding via bastion/ECS exec, non riaprire IP pubblici.\n4) BACKUP RETENTION: i dev oggi sono a 14gg (hard floor). Portarli a 7gg e' un modify in-place a rischio nullo (COST-RDS-BACKUP-RETENTION) e fa risparmiare subito. Prod resta >=14.\n5) PERFORMANCE INSIGHTS / ENHANCED MONITORING / LOG EXPORTS: attivabili in-place su istanza esistente (modify) -> si possono accendere PRIMA della migrazione di rete come quick-win MON-03, a costo lieve.\n6) ALARM: creabili subito puntando alle istanze esistenti (DimensionDBInstanceIdentifier) -> MON-01 deployabile prima del resto, serve solo il topic SNS Wolico (dipendenza monitoring).\n7) AUTO-TURNOFF DEV: se prima esisteva il meccanismo a tag 'Auto-TurnOff=True' (deployato ma OFF), rimuoverlo e sostituirlo con il flag auto_turnoff del nuovo modulo (EventBridge Scheduler) per evitare doppio controllo. Verificare che nessuno script imperativo legga ancora quel tag.\nSequenza consigliata per cliente: (MON-03 + MON-01 + backup 7gg dev) in-place subito -> poi NETSEC-01 (publicly_accessible=false) in-place -> poi REPLACE in subnet privata in finestra di manutenzione con strategia snapshot.",
+    "preserve": [
+      "storage_encrypted=True (conservato come hard ON, non piu' disattivabile)",
+      "deletion_protection=True (conservato; forzato in prod)",
+      "RemovalPolicy.RETAIN (conservato sempre, anche dopo eventuale REPLACE)",
+      "backup_retention (conservato come concetto; reso per-ambiente invece del floor fisso a 14)",
+      "GP3 storage autoscaling: allocated_storage + max_allocated_storage (conservato, attivabile/disattivabile via max_allocated_storage_gb)",
+      "Secret master generato in Secrets Manager con nome stabile derivato dall'identifier (conservato; rds.Credentials.from_generated_secret)",
+      "ca_certificate impostato esplicitamente (conservato; default su CA RDS aggiornata)",
+      "Pattern di naming dell'identifier {env_prefix}-{customer}-[{root}]-db (conservato, ma con dimensione 'app' per il vincolo 1-infra-2-app)",
+      "Validatori pydantic con default sensati (preso a modello dal modulo glue, l'unico fatto bene secondo findings §7) applicati a RdsConfig"
+    ],
+    "open_questions": "1) DB CONDIVISO MULTI-SCHEMA NEI DEV (shared_multi_schema): valutato come richiesto -> di norma NON compatibile con l'isolamento account (1 account per cliente/ambiente, decisione strategica #1 di STATO.md). Un DB condiviso TRA CLIENTI richiederebbe consolidamento VPC/account, escluso. Ha senso SOLO tra piu' app NELLO STESSO account dev (vincolo 1-infra-2-app, es. crif/prima-power/laif): li' un singolo RDS con piu' schema/role per app risparmierebbe ~13 $/mese di istanza. Raccomandazione: tenere il flag default OFF e implementare la versione 'same-account multi-app' solo se Simone conferma che vale la complessita' di gestione schema/migrazioni. DA CONFERMARE.\n2) DEV PIU' LEGGERI: STATO.md ha una domanda aperta sull'alleggerimento dell'isolamento dev. Se si accetta un DB dev condiviso same-account, il default assunto (isolamento anche dev) cambia. DA CONFERMARE.\n3) SECRET_ROTATION in PRIVATE_ISOLATED: la rotation Lambda gira in-VPC e ha bisogno degli interface endpoint Secrets Manager + STS (per-account, decisione #1). Confermare che il modulo networking li crei quando secret_rotation=True, altrimenti la rotation fallisce silenziosamente. Inoltre attenzione al bug storico laif-cdk SubnetType.PRIVATE inesistente (lambdas.py:61) da NON ereditare.\n4) SOGLIA CPU su classi burstable vs non-burstable: l'alarm di default usa CPUCreditBalance solo su classi t* e CPUUtilization sulle altre. Verificare la mappa instance_class->burstable per non creare alarm su una metrica inesistente (CPUCreditBalance non esiste su classi non-burstable). DA VALIDARE in fase di test del modulo.\n5) ENGINE VERSION DEFAULT: ho messo 16.4 come default conservativo (laif-cdk era a 17.10 con major upgrade auto ON, che ha contribuito al drift Nivi 15->17). Confermare la versione major standard di flotta."
+  },
+  {
+    "key": "COMPUTE",
+    "title": "Backend ECS + ALB + Scaling",
+    "module": "compute (backend ECS + ALB condiviso + scaling) — `laif_infra/modules/compute.py`",
+    "purpose": "Modulo che sostituisce `laif-cdk/constructs/ecs.py` (rework piu' importante del ridisegno). Definisce in modo dichiarativo e sicuro-by-default il backend applicativo: cluster ECS, task definition, servizio long-running, ALB CONDIVISO a livello di account (multi-app via host/path rule) che registra il SERVIZIO ECS (non l'ASG), health check container sano, autoscaling applicativo on/off, deploy resiliente (circuit breaker + rollback) e gli alarm ELB/ECS che alimentano Wolico. Risolve i problemi del brief #2 (zero scalabilita' orizzontale), #3 (risposta sbagliata ai down / scale-up a mano: e' il caso Nivi), #7 (ALB pagati ma non sfruttati). Implementa SCALE-01..06/08, COST-EC2-IDLE e il fix forense del caso Nivi (health check killer + single worker + desired_count=1). Default = FARGATE (semplifica awsvpc, scaling e subnet private); EC2 resta opt-out per costo/GPU. NON include i task/ETL (modulo `jobs`/TASK-01 a parte), ne' RDS, ne' frontend.",
+    "constructs": [
+      {
+        "name": "ComputeCluster",
+        "role": "Cluster ECS per-app o condiviso nell'account; abilita Container Insights (MON-02) e gestisce il capacity provider SOLO se launch_type=ec2. Su Fargate non crea ASG/capacity provider (sparisce tutta la EcsEC2Cluster + add_capacity_provider con max_capacity=1).",
+        "key_params": "launch_type: 'fargate'(default)|'ec2'; container_insights=True(ON, era OFF); ec2.instance_type='t4g.medium' e ec2.{min,max,desired} solo se launch_type=ec2 (managed_scaling=True quando EC2, era False)"
+      },
+      {
+        "name": "BackendService",
+        "role": "Cuore del modulo: TaskDefinition awsvpc + servizio ECS long-running registrato come TARGET dell'ALB (target_type=IP, era l'ASG). Defang dell'health check container, circuit breaker+rollback ON, healthCheckGracePeriod sensato. E' il fix completo del caso Nivi.",
+        "key_params": "cpu=512/mem=1024 (Fargate, abbastanza per 2 worker); desired_count=2 in prod / 1 in dev (SCALE-03); image.tag OBBLIGATORIO e immutabile, vietato 'latest' (SCALE-08); container_command per i 2+ worker (SCALE-02); health_check {path='/health', interval=30s, timeout=5s, retries=3, start_period=60s} (SCALE-01); circuit_breaker+rollback=True (SCALE-06); health_check_grace_period=60s; subnets=PRIVATE_WITH_EGRESS via interface endpoints, assign_public_ip=False (era True hardcoded)"
+      },
+      {
+        "name": "SharedAlb",
+        "role": "ALB internet-facing UNICO per account, condiviso tra le app (multi-app). Crea/importa l'ALB + un solo listener 443; ogni BackendService aggancia una listener rule per host/path. Abbatte il costo '~26 ALB h24 con LCU~0' (brief #7).",
+        "key_params": "internet_facing=True; listener 443 con certificate (ACM dal modulo dns/acm); cloudfront_ingress_only=True di default (SG accetta solo prefix list CloudFront + header segreto, NETSEC-03); default_action=fixed 404; idle_timeout=60s"
+      },
+      {
+        "name": "AppRoute",
+        "role": "Regola di routing host/path che collega una app al listener condiviso e crea il target group IP (un TG per app) con l'health check ELB sano. E' il meccanismo 'ALB condiviso tra apps dello stesso account'.",
+        "key_params": "host_headers=['api.cliente.it'] e/o path_patterns=['/svcA/*']; priority (auto-incrementale per app); tg_health_check {path='/health', healthy_threshold=2, interval=15s, timeout=5s, deregistration_delay=30s}; stickiness off"
+      },
+      {
+        "name": "ServiceAutoscaling",
+        "role": "Autoscaling APPLICATIVO (scale del servizio ECS, non dell'ASG) target-tracking on/off a config. SCALE-05: oggi auto_scale_task_count non e' MAI chiamato sul backend.",
+        "key_params": "enabled=False (default OFF, opt-in per cliente); min=desired, max (es. 1->4 prod); target_cpu=60% e/o target_alb_requests_per_target; scale_in_cooldown=120s/scale_out_cooldown=60s"
+      },
+      {
+        "name": "ComputeAlarms",
+        "role": "Alarm CloudWatch del compute (MON-01) che chiudono la classe di down Nivi: ALB 5xx (Target+ELB), UnHealthyHostCount>0, CPU/RAM servizio (da Container Insights), running<desired. Azione -> SNS del modulo monitoring -> ingest Wolico.",
+        "key_params": "alb_5xx_threshold=5/5min; unhealthy_host=>0; cpu_high=85%; mem_high=85%; running_below_desired=ON; sns_topic_arn iniettato dal modulo monitoring; tutti opt-out singolarmente"
+      }
+    ],
+    "config_yaml": "apps:\n  - name: backend\n    image:\n      ecr_repo: backend            # riferito al modulo ecr (scan_on_push preservato)\n      tag: \"git-3f9a2c1\"           # OBBLIGATORIO e immutabile — 'latest' rifiutato (SCALE-08)\n    compute:\n      launch_type: fargate         # default; 'ec2' solo per GPU/casi costo\n      cpu: 512\n      memory: 1024\n      desired_count: 2             # default 2 in prod, 1 in dev (SCALE-03)\n      command: [\"gunicorn\", \"app:app\", \"--workers\", \"3\", \"--bind\", \"0.0.0.0:8000\"]  # 2+ worker (SCALE-02)\n      container_port: 8000\n      health_check:                # health check CONTAINER defanged (SCALE-01 / fix Nivi)\n        path: /health\n        interval_seconds: 30\n        timeout_seconds: 5\n        retries: 3\n        start_period_seconds: 60\n      deploy:\n        circuit_breaker: true      # ON (SCALE-06)\n        rollback: true             # ON\n        health_check_grace_period_seconds: 60\n      routing:                     # ALB CONDIVISO dell'account, multi-app via host/path\n        alb: shared                # usa l'ALB unico del cliente; più app puntano allo stesso\n        host_headers: [\"api.cliente.laifgroup.com\"]\n        path_patterns: [\"/*\"]\n      autoscaling:                 # SCALE-05 — feature flag, default OFF\n        enabled: false\n        min_count: 2\n        max_count: 6\n        target_cpu_percent: 60\n        target_requests_per_target: 800\n      alarms:                      # MON-01 — default ON, instradati a Wolico\n        enabled: true\n\n# blocco a livello account: l'ALB condiviso tra le apps\nshared_alb:\n  internet_facing: true\n  certificate: arn:aws:acm:eu-west-1:...:certificate/...   # dal modulo dns/acm (DNS-validated)\n  cloudfront_ingress_only: true   # SG = prefix list CloudFront + header segreto (NETSEC-03)\n  container_insights: true        # cluster (MON-02)",
+    "defaults_flipped": [
+      "ALB target: era l'ASG di istanze EC2 (listener.add_targets(targets=[asg]), ecs.py:675/688-698) -> ora il SERVIZIO ECS via target_group_type=IP (awsvpc) (SCALE-04, brief #7)",
+      "Network mode: era ecs.NetworkMode.BRIDGE (ecs.py:717) + hostPort statico = max 1 task/istanza -> awsvpc (un ENI per task, scaling reale)",
+      "desired_count: era 1 (ecs.py:407/550) -> 2 in prod, 1 in dev (SCALE-03)",
+      "Health check ELB/container: era interval=5s/timeout=4s/threshold=2 senza path + curl/5s/5s/2 hardcoded in template_stack (causa primaria del down Nivi) -> /health, interval 30s, timeout 5s, retries 3, start_period 60s (SCALE-01)",
+      "Circuit breaker + rollback: assenti -> ON di default (SCALE-06)",
+      "healthCheckGracePeriod: era 0 -> 60s",
+      "Launch type default: era ec2 (ServiceDeploymentType.ec2, add_capacity_provider max_capacity=1, managed_scaling=False) -> FARGATE; se EC2, managed_scaling=True e max_capacity>desired",
+      "assign_public_ip: era True hardcoded sul Fargate service (ecs.py:447) -> False (subnet PRIVATE_WITH_EGRESS via interface endpoints per-account)",
+      "Subnet servizio: era PUBLIC -> PRIVATE_WITH_EGRESS (coerente con NETSEC-01: workload privati, egress via interface endpoints, RDS PRIVATE_ISOLATED)",
+      "Autoscaling applicativo: auto_scale_task_count MAI chiamato -> ServiceAutoscaling target-tracking on/off a config (SCALE-05)",
+      "image tag: era 'latest' mutabile (ecs.py:843) -> tag immutabile obbligatorio, 'latest' rifiutato a sintesi (SCALE-08)",
+      "ALB: era 1 per servizio (~26 ALB h24, LCU~0) -> 1 ALB condiviso per account, multi-app via host/path rule (brief #7, COST-EC2-IDLE lato ELB)",
+      "expose_port/expose_ssh('ANY') con print: rimossi -> nessun ingress 0.0.0.0/0; ALB solo da prefix list CloudFront (NETSEC-03)",
+      "Container Insights: era OFF -> ON (MON-02)"
+    ],
+    "feature_flags": [
+      {
+        "flag": "apps[].compute.launch_type",
+        "default": "fargate",
+        "effect": "fargate = nessun ASG, awsvpc nativo, scaling per-task, subnet private semplici; ec2 = capacity provider con managed scaling ON (per GPU/casi costo, opt-out cosciente)"
+      },
+      {
+        "flag": "apps[].compute.autoscaling.enabled",
+        "default": "false",
+        "effect": "ON crea il target-tracking applicativo (CPU/req per target) sul servizio ECS (SCALE-05); OFF lascia desired_count fisso. Feature flag scaling orizzontale del brief"
+      },
+      {
+        "flag": "apps[].compute.deploy.circuit_breaker / rollback",
+        "default": "true",
+        "effect": "deploy con task non-healthy fermato e rollato indietro invece di degradare il servizio (SCALE-06); disattivabile solo per debug"
+      },
+      {
+        "flag": "apps[].compute.alarms.enabled",
+        "default": "true",
+        "effect": "crea gli alarm ELB 5xx / UnHealthyHost / CPU-RAM / running<desired e li instrada al SNS->Wolico (MON-01); opt-out per ambienti throwaway"
+      },
+      {
+        "flag": "shared_alb.cloudfront_ingress_only",
+        "default": "true",
+        "effect": "SG ALB accetta solo prefix list CloudFront + valida l'header segreto sulla listener rule (NETSEC-03); False apre il listener (sconsigliato)"
+      },
+      {
+        "flag": "apps[].compute.routing.alb",
+        "default": "shared",
+        "effect": "'shared' aggancia l'app all'ALB unico dell'account via host/path rule (multi-app, brief #7); 'dedicated' crea un ALB dedicato (sconsigliato, solo se isolamento di rete L7 richiesto)"
+      },
+      {
+        "flag": "ComputeCluster.container_insights",
+        "default": "true",
+        "effect": "metriche CPU/mem/task per-service per la diagnosi dei down (MON-02); OFF risparmia spesa lieve negli ambienti usa-e-getta"
+      }
+    ],
+    "depends_on": [
+      "network (la VPC deve esporre subnet PRIVATE_WITH_EGRESS + gli interface endpoints ECR api+dkr/Logs/Secrets/SSM/STS per-account: senza, il task Fargate in subnet privata non scarica l'immagine)",
+      "ecr (immagine backend, image_scan_on_push preservato; risolve il tag immutabile SCALE-08)",
+      "secrets (Secrets Manager iniettati nel container; raggiungibili via endpoint Secrets/STS)",
+      "dns/acm (certificato ACM DNS-validated per il listener 443 dell'ALB condiviso — TOOL-06: niente doppio deploy)",
+      "monitoring (espone il SNS topic ARN che ComputeAlarms usa come azione -> ingest Wolico; il compute NON crea il topic ne' il routing, li consuma)",
+      "cloudfront/frontend (fornisce il prefix list + l'header segreto per cloudfront_ingress_only — NETSEC-03; coordinamento, non dipendenza forte)"
+    ],
+    "implements": [
+      "SCALE-01",
+      "SCALE-02",
+      "SCALE-03",
+      "SCALE-04",
+      "SCALE-05",
+      "SCALE-06",
+      "SCALE-08",
+      "COST-EC2-IDLE",
+      "MON-01",
+      "MON-02",
+      "brief #2",
+      "brief #3",
+      "brief #7"
+    ],
+    "migration_notes": "Migrazione per-cliente, NON big-bang (il passaggio ALB->ECS service + BRIDGE->awsvpc tocca path di rete). ORDINE consigliato: (1) pilota su 1 dev (es. casartelli-dev, account day-zero a 0$): deploy del nuovo modulo in parallelo, awsvpc verificato, poi switch del CNAME CloudFront->nuovo ALB. (2) Estendere ad altri dev, poi prod a basso traffico, infine prod critici (Nivi). RISCHI/MITIGAZIONI: (a) awsvpc consuma 1 ENI per task -> verificare il limite ENI per la sottorete/istanza prima di alzare max_count (su Fargate non e' un problema EC2, ma il limite ENI dell'account/subnet si'); pilota prima. (b) Subnet private: i task non partono se mancano gli interface endpoints -> il modulo network DEVE precedere; in transizione si puo' tenere PUBLIC con assign_public_ip=False solo se c'e' egress. (c) Il fix Nivi (health check defanged + desired_count=2 + circuit breaker) e' applicabile SUBITO come quick-win sul vecchio stack a costo 0, ma su EC2/BRIDGE desired_count=2 richiede 2 istanze (1 task/istanza): il vero 0$ arriva solo dopo lo switch awsvpc/Fargate. (d) Tag immutabile: i deploy che usano 'latest' vanno aggiornati a passare il git SHA (coordinare con la CI, TOOL-04/03). (e) ALB condiviso: i clienti con 1 ALB-per-servizio migrano a 1 ALB con piu' listener rule -> verificare il limite di rule per listener (100) e l'ordine di priorita'; mantenere il vecchio ALB attivo finche' il CNAME non e' spostato. (f) Config drift (caso Nivi: prod.yaml non riproduce la prod) -> rendere il values.yaml l'SSOT (TOOL-08) e deployare da CI, mai da working copy. (g) DOWNTIME: lo switch del target group e' a costo zero se si fa blue/green sul CNAME CloudFront; il deregistration_delay=30s evita 5xx in deregistrazione.",
+    "preserve": [
+      "image_scan_on_push=True su ECR (findings §7) — consumato qui via il modulo ecr per il tag immutabile",
+      "RemovalPolicy e la disciplina di log retention (TWO_WEEKS sul log group del task, gia' presente in EcsTask.get_log_driver) — mantenuta e resa configurabile (MON-06)",
+      "Il seme della modularita' on/off (filtro stack 'disabled' di laif-cdk, findings §7) -> generalizzato nei feature flag del modulo",
+      "L'uso di SSM Managed Instance Core sul role EC2 (gia' in add_capacity_provider) -> mantenuto per il path EC2 opt-out, abilita SSM Session Manager al posto di SSH (NETSEC-05)",
+      "L'idea di importare un ALB esistente (existing_alb_arn) -> rifattorizzata e resa pulita per il pattern ALB condiviso multi-app (era usata male, con target=ASG)",
+      "cloudfront_ingress_only via prefix list CloudFront (gia' abbozzato in ecs.py:582-594) -> mantenuto e irrobustito con l'header segreto (NETSEC-03)"
+    ],
+    "open_questions": "1) HEALTH ENDPOINT: /health deve essere SERVITO DA UN WORKER DEDICATO/leggero e non dal pool che satura (causa Nivi). Il modulo infra puo' solo configurare l'endpoint; chi garantisce lato app che /health non sia bloccato dal single-vCPU saturo? (coordinamento con i team applicativi, SCALE-02). 2) DUAL HEALTH CHECK: il brief #3 di Wolico dice che le app espongono GET /api/health/database e /api/summary scansionati ogni 5 min. Il TG ALB usa /health (liveness rapido) — confermare che NON vada usato /api/health/database come health check ALB (un DB lento ucciderebbe il task: e' un'altra variante del bug Nivi). 3) Fargate vs EC2 sul COSTO: per i backend piccoli h24, Fargate puo' costare piu' di un t4g.small condiviso — serve una soglia/euristica (es. < N task piccoli h24 -> EC2 condiviso) o si accetta Fargate ovunque per semplicita'? 4) ALB CONDIVISO E ISOLAMENTO: con piu' app sullo stesso listener, un bug di routing/SG espone l'app B alla A — confermare che l'isolamento per-account (mantenuto) sia sufficiente e che non serva un ALB per dominio di sicurezza. 5) Header segreto CloudFront->ALB: dove vive il segreto e come ruota (Secrets Manager + rotazione)? va coordinato col modulo frontend/cloudfront. 6) Autoscaling su request-per-target: richiede che ogni app abbia il suo TG (gia' previsto) — confermare la metrica preferita (CPU vs ALBRequestCountPerTarget) come default quando autoscaling.enabled=true."
+  },
+  {
+    "key": "EDGE",
+    "title": "Frontend / CDN / WAF",
+    "module": "edge",
+    "purpose": "Modulo Edge della nuova libreria infra LAIF: il \"front door\" pubblico di ogni app (frontend SPA + reverse-proxy verso il backend ALB). Sostituisce buckets.py(FrontendBucket) + cloudfront.py(Distribution) + wafv2.py(WAFv2) di laif-cdk, ribaltando i 3 default rotti di sicurezza edge dei findings §6 (bucket FE pubblico senza OAC, ALB raggiungibile da qualsiasi CloudFront, CloudFront->ALB in HTTP chiaro) e attivando il WAF che oggi e' deployato 0/24. Fornisce: (1) bucket frontend PRIVATO servito solo via CloudFront OAC (no piu' S3 website pubblico), (2) Distribution CloudFront con error_responses 403/404->index.html per le SPA, secret-header injection verso l'origin ALB e HTTPS-only sull'origin, (3) WAF ON di default con rate-limit + managed rules in modalita' onboarding COUNT->BLOCK e WAF logging su CloudWatch. Implementa NETSEC-02 (OAC bucket FE), NETSEC-03 (header segreto + HTTPS CloudFront->ALB) e NETSEC-04 (abilitare il WAF gia' in libreria). Chiude il \"trittico\" edge: i tre interventi vanno insieme, perche' WAF da solo con bucket pubblico e ALB bypassabile e' falsa sicurezza (catalogo NETSEC §). Dipende dal cert ACM regionale per l'HTTPS sull'origin ALB (gestito nel modulo cert/TOOL-06) e da un cert CloudFront in us-east-1 per il viewer HTTPS sui domini custom.",
+    "constructs": [
+      {
+        "name": "FrontendBucket",
+        "role": "Bucket S3 PRIVATO che ospita gli artefatti della SPA, servito esclusivamente da CloudFront via Origin Access Control (OAC). Ribalta il vecchio website-bucket pubblico: niente website hosting, niente public_read_access, niente bucket policy aperta. La bucket policy concede s3:GetObject SOLO al service principal cloudfront.amazonaws.com con condition aws:SourceArn == ARN della distribuzione (least-privilege, evita confused-deputy). Espone get_bucket()/get_bucket_name() e il metodo grant_oac_read(distribution) chiamato internamente dalla Distribution.",
+        "key_params": "block_public_access=BLOCK_ALL (era tutto False) [hardcoded, non configurabile]; enforce_ssl=True (aws:SecureTransport, nuovo) [hardcoded]; encryption=S3_MANAGED [default on]; website hosting=RIMOSSO; public_read_access=RIMOSSO; versioned=True default (rollback FE rapido); removal_policy=DESTROY in dev / RETAIN in prod (da env); auto-genera nome <env>-<app>-fe-<root>"
+      },
+      {
+        "name": "Distribution",
+        "role": "Distribuzione CloudFront, unico punto pubblico. Default behavior = frontend bucket via OAC con S3BucketOrigin (NON piu' S3StaticWebsiteOrigin/HttpOrigin). add_api_behavior(path, alb) crea il behavior verso il backend forzando HTTPS_ONLY sull'origin e iniettando l'header segreto CloudFront->ALB. Aggiunge error_responses 403/404 -> /index.html (HTTP 200) per il routing client-side delle SPA. Collega il WAF passandone l'ARN (web_acl_id). Lega il cert CloudFront us-east-1 + i domini custom. Espone distribution_id/domain_name come property (no piu' DISTRIBUTION_ID copiato a mano, cfr TOOL-06).",
+        "key_params": "default_origin = FrontendBucket via OAC [default]; viewer_protocol_policy=REDIRECT_TO_HTTPS [preservato]; minimum_protocol_version=TLS_V1_2_2021 [default]; price_class=PRICE_CLASS_100 [preservato]; spa_error_responses=True (403/404->index.html 200) [flag, default ON]; enable_logging=True su bucket log dedicato con lifecycle (era illimitato) [default ON]; web_acl_id da WebAcl (us-east-1) [auto se waf.enabled]; origin_ssl_protocols=[TLS_V1_2] sull'ALB [hardcoded]; certificate (us-east-1) richiesto se domains set"
+      },
+      {
+        "name": "OriginSecret",
+        "role": "Gestisce il segreto condiviso CloudFront->ALB (NETSEC-03). Crea/legge un Secrets Manager secret per-app, lo inietta come custom header (default X-Origin-Verify) su tutti gli origin ALB della Distribution, ed espone il valore + nome-header al modulo ECS/ALB affinche' la listener rule del backend faccia 403 se l'header manca/non combacia. Cosi' l'ALB e' raggiungibile SOLO tramite questa CloudFront, non da internet diretto.",
+        "key_params": "header_name='X-Origin-Verify' [override]; secret in Secrets Manager con rotation OFF di default [flag rotation]; generate_secret_string=32 char [default]; espone header_name + secret_value per il modulo edge/backend; integrazione: la regola ALB e' nel modulo ECS/ALB (depends_on), qui si fornisce solo il contratto"
+      },
+      {
+        "name": "WebAcl",
+        "role": "WAFv2 attivato di DEFAULT (NETSEC-04, oggi 0/24 deployato). Rate-limit + 5 managed rule (IpReputation, Common, KnownBadInputs, SQLi, AdminProtection) conservate dai findings §7. Novita': managed rules in modalita' COUNT durante l'onboarding (waf_mode=count) poi promosse a BLOCK (waf_mode=block) per evitare il blocco di traffico legittimo al primo deploy; WAF logging abilitato su CloudWatch Logs (group dedicato, retention 90gg) per popolare Wolico via la pipeline monitoring. Scope CLOUDFRONT => l'ACL e i suoi log vivono in us-east-1 (vincolo AWS). Lista IP allow/block opzionale.",
+        "key_params": "enabled=True [DEFAULT ON, era assente]; scope=CLOUDFRONT [auto per edge]; rate_limit=2000 req/5min/IP [override, era 500 troppo basso]; managed_rules=set completo [default ON]; waf_mode=count->block [flag, default count al primo deploy]; logging_enabled=True retention 90gg [default ON]; allow_ip_set/block_ip_set [opzionali, off]; default_action=allow (block se allow_ip_set settato)"
+      }
+    ],
+    "config_yaml": "edge:\n  enabled: true                      # se false, il modulo non sintetizza nulla\n  domains:                           # CNAME custom serviti dalla distribuzione (vuoto = solo *.cloudfront.net)\n    - app.cliente.com\n  certificate:\n    # cert CloudFront in us-east-1 per l'HTTPS sul VIEWER (domini custom).\n    # creato/validato DNS dal modulo cert (TOOL-06); qui si referenzia per nome logico o ARN.\n    cloudfront_cert_ref: edge-viewer-cert      # risolto dal modulo cert (us-east-1)\n  frontend:\n    bucket_root_name: assets         # nome -> <env>-<app>-fe-assets\n    versioned: true                  # rollback rapido della SPA\n    spa: true                        # abilita error_responses 403/404 -> index.html (200)\n  origin:\n    # reverse-proxy verso il backend (modulo ecs/alb). HTTPS obbligatorio sull'origin.\n    api_path_pattern: \"/api/*\"\n    alb_ref: backend-alb             # risolto dal modulo ecs (stesso stack)\n    protocol: https                  # default https; http rifiutato in prod\n    # cert REGIONALE (eu-west-1) per l'HTTPS lato ALB: creato dal modulo cert (TOOL-06),\n    # referenziato dal modulo ecs sul listener 443. L'edge non lo possiede, ma lo richiede attivo.\n    secret_header:\n      enabled: true                  # NETSEC-03: header segreto CloudFront->ALB\n      header_name: X-Origin-Verify   # il modulo ecs crea la listener-rule 403-se-assente\n  logging:\n    enabled: true\n    retention_days: 90               # era illimitato -> costo CloudFront logs sotto controllo\n  waf:                               # NETSEC-04\n    enabled: true                    # DEFAULT ON (era 0/24)\n    mode: count                      # primo deploy in COUNT; passare a \"block\" dopo verifica metriche\n    rate_limit: 2000                 # req per IP su finestra 5 min\n    logging:\n      enabled: true\n      retention_days: 90\n    allow_ip_set: []                 # se valorizzato -> default_action=block (allowlist-only)\n    block_ip_set: []\n\n# --- snippet per un ambiente DEV (override piu' permissivi) ---\n# edge:\n#   frontend: { versioned: false }\n#   logging:  { enabled: false }          # risparmio in dev\n#   waf:      { mode: count }             # in dev resta in count per non bloccare i test",
+    "defaults_flipped": [
+      "Bucket frontend: BlockPublicAccess da tutto-False (public_acls/ignore/block_policy/restrict tutti False, buckets.py:128-133) -> BLOCK_ALL. Niente piu' bucket pubblico.",
+      "Bucket frontend: public_read_access=True (buckets.py:134) -> RIMOSSO. Accesso concesso solo a CloudFront via OAC bucket-policy con condition aws:SourceArn.",
+      "Bucket frontend: website hosting (website_index_document/website_error_document, buckets.py:136-137) -> RIMOSSO. La SPA passa da error_responses CloudFront, non da S3 website endpoint.",
+      "Bucket frontend: aggiunto enforce_ssl=True (aws:SecureTransport deny) e encryption S3_MANAGED, prima assenti.",
+      "Origine CloudFront->S3: da cf_origins.S3StaticWebsiteOrigin (HTTP, endpoint website pubblico, cloudfront.py:193) -> S3BucketOrigin con OAC (accesso firmato SigV4, bucket privato).",
+      "Origine CloudFront->ALB: protocol di default da HTTP_ONLY (cloudfront.py:188, generate_origin default HTTP) -> HTTPS_ONLY con origin_ssl_protocols=[TLS_V1_2]. Niente piu' hop in chiaro CloudFront->ALB (finding §6 punto 3).",
+      "ALB origin: aggiunta iniezione custom header segreto (NETSEC-03), prima assente -> l'ALB non e' piu' raggiungibile da qualsiasi distribuzione/internet diretto.",
+      "WAF: da deployato 0/24 (web_acl_id default '' nella Distribution, cloudfront.py:26,74) -> WAF ON di default, associato alla distribuzione.",
+      "WAF managed rules: da BLOCK diretto (wafv2.py: action block hardcoded sui managed group) -> COUNT al primo deploy poi BLOCK (mode count->block), per non bloccare traffico legittimo all'attivazione.",
+      "WAF: aggiunto logging su CloudWatch Logs (prima assente) per alimentare Wolico.",
+      "WAF rate_limit default da 500 (wafv2.py:23, troppo aggressivo) -> 2000 req/5min/IP.",
+      "CloudFront logging: bucket log con lifecycle/retention (era enable_logging=True su bucket senza scadenza, finding §6 'bucket log CloudFront illimitati') -> retention 90gg."
+    ],
+    "feature_flags": [
+      {
+        "flag": "edge.enabled",
+        "default": "true",
+        "effect": "Se false l'intero modulo non sintetizza risorse (app puramente backend senza frontend pubblico)."
+      },
+      {
+        "flag": "edge.waf.enabled",
+        "default": "true",
+        "effect": "Attiva/disattiva il WAFv2 e la sua associazione alla distribuzione. ON di default (NETSEC-04), ribalta lo 0/24 attuale."
+      },
+      {
+        "flag": "edge.waf.mode",
+        "default": "count",
+        "effect": "count = managed rules in COUNT (osserva senza bloccare, primo deploy); block = enforcement reale. Rate-limit resta sempre in BLOCK. Si promuove a block dopo aver verificato le metriche."
+      },
+      {
+        "flag": "edge.waf.logging.enabled",
+        "default": "true",
+        "effect": "Abilita il logging WAF su CloudWatch Logs (group dedicato) -> pipeline verso Wolico. Off solo in dev per risparmio."
+      },
+      {
+        "flag": "edge.origin.secret_header.enabled",
+        "default": "true",
+        "effect": "NETSEC-03: inietta l'header segreto CloudFront->ALB e fornisce il contratto al modulo ecs per la listener-rule 403. Se off, l'ALB resta bypassabile (sconsigliato, solo migrazione transitoria)."
+      },
+      {
+        "flag": "edge.frontend.spa",
+        "default": "true",
+        "effect": "Aggiunge error_responses 403/404 -> /index.html (200) per il deep-link routing client-side. Off per asset statici non-SPA."
+      },
+      {
+        "flag": "edge.frontend.versioned",
+        "default": "true (prod) / false (dev)",
+        "effect": "Versioning del bucket FE per rollback rapido del deploy frontend."
+      },
+      {
+        "flag": "edge.logging.enabled",
+        "default": "true",
+        "effect": "Access log CloudFront su bucket dedicato con retention. Off in dev per risparmio."
+      },
+      {
+        "flag": "edge.origin.protocol",
+        "default": "https",
+        "effect": "Protocollo CloudFront->ALB. https forzato (HTTPS_ONLY); http accettato solo come override esplicito e rifiutato in prod (validazione)."
+      }
+    ],
+    "depends_on": [
+      "cert (TOOL-06): cert ACM REGIONALE (eu-west-1) DNS-validated per l'HTTPS sull'origin ALB + cert CloudFront (us-east-1) DNS-validated per il viewer sui domini custom. L'edge li referenzia, non li possiede. Sblocca l'eliminazione del doppio deploy deploy_services false->true.",
+      "ecs/alb: fornisce l'ALB (origin del behavior /api/*) e DEVE creare la listener-rule che ritorna 403 se l'header segreto manca/non combacia (controparte di OriginSecret) + listener HTTPS 443 col cert regionale. L'edge espone header_name+secret; l'ecs lo consuma.",
+      "dns (laif-dns, TOOL-07): record CNAME/ALIAS dei domini custom -> domain_name della distribuzione; validazione DNS dei due cert. Oggi monolite, da rendere modulare.",
+      "monitoring: l'edge espone distribution_id, web_acl name/log-group, log-group WAF -> il modulo monitoring crea alarm 5xx CloudFront e instrada WAF/5xx verso Wolico (decisione strategica #2).",
+      "core/naming: env_prefix, app_name, tag, removal-policy per-ambiente (base construct condiviso)."
+    ],
+    "implements": [
+      "NETSEC-02",
+      "NETSEC-03",
+      "NETSEC-04"
+    ],
+    "migration_notes": "Migrazione per i ~24 clienti esistenti (tutti col vecchio pattern: bucket FE pubblico, CloudFront->ALB in HTTP, WAF assente). Ordine consigliato, una distribuzione alla volta, partendo da un cliente DEV pilota (es. Casartelli, day-zero, basso rischio).\n\nPREREQUISITO (cert/TOOL-06): prima dell'edge serve avere i due cert ACM DNS-validated: regionale eu-west-1 (origin ALB) + us-east-1 (viewer CloudFront). Vanno emessi e validati PRIMA, altrimenti la sostituzione dell'origin S3->ALB-HTTPS fallisce. E' la dipendenza piu' rischiosa: pianificare la validazione DNS via laif-dns (TOOL-07).\n\n1) WAF in COUNT (NETSEC-04, basso rischio, fai per primo): attiva edge.waf.enabled=true, mode=count su tutta la flotta. Nessun blocco di traffico, solo metriche+logging. Osserva 1-2 settimane le metriche per regola (Wolico/CloudWatch), poi promuovi a block per-cliente. Il rate_limit resta in block (2000/IP e' largo). RISCHIO: falsi positivi della CommonRuleSet su upload/payload grandi -> usare ruleActionOverrides mirati (gia' presente l'override SizeRestrictions_QUERYSTRING) prima del passaggio a block.\n\n2) Header segreto + HTTPS origin (NETSEC-03): coordinato col modulo ecs. Sequenza per non causare downtime: (a) il modulo ecs aggiunge la listener-rule che ACCETTA l'header segreto MA non blocca ancora chi non lo ha (regola in sola aggiunta); (b) l'edge inizia a iniettare l'header e passa l'origin a HTTPS_ONLY (richiede listener 443 sull'ALB col cert regionale gia' attivo); (c) verificato che tutto il traffico arriva con header valido, l'ecs cambia la default action del listener a 403. Cosi' non c'e' finestra di 403 sul traffico buono. RISCHIO: se l'ALB non ha ancora il listener 443/cert, l'origin HTTPS fallisce -> step 1 cert e' bloccante.\n\n3) Bucket FE privato + OAC (NETSEC-02, il piu' delicato): il bucket cambia da pubblico a privato e l'origin CloudFront passa da S3StaticWebsiteOrigin a S3BucketOrigin+OAC. ATTENZIONE: e' una sostituzione di origin e di policy del bucket -> il deploy della SPA (CI) deve continuare a fare upload sullo stesso bucket (il nome resta <env>-<app>-fe-...), ma il bucket FE oggi ha removal_policy=DESTROY: se CDK ricrea il bucket si perde il contenuto -> fai prima un sync degli asset, poi deploy, poi re-deploy della SPA dalla CI. Per i clienti con asset critici impostare RETAIN prima della migrazione. La SPA error-routing passa da S3-website (404->index) a CloudFront error_responses: verificare che il deep-link funzioni dopo lo switch. Invalidare la cache CloudFront dopo il primo deploy.\n\n4) Logging+retention: attivare per ultimo, e' a basso rischio; recupera anche il costo dei 'bucket log CloudFront illimitati' (finding §6).\n\nROLLBACK: ogni step e' indipendente. Tenere il vecchio stack laif-cdk deployabile finche' il pilota non e' verificato. Il punto di non-ritorno e' lo step 3 (bucket privato): testarlo a fondo sul DEV pilota prima di toccare qualsiasi prod. Validare end-to-end (deep-link SPA, /api/* via header segreto, WAF non blocca login/upload) su 1 dev + 1 prod a basso traffico prima del roll-out di flotta.",
+    "preserve": [
+      "WAFv2: rate-limit + le 5 AWS managed rule group (IpReputationList, CommonRuleSet, KnownBadInputsRuleSet, SQLiRuleSet, AdminProtectionRuleSet) gia' presenti in wafv2.py - codice buono, mai deployato. Si conserva la struttura, si aggiunge solo COUNT->BLOCK + logging.",
+      "WAFv2: l'override ruleActionOverride su SizeRestrictions_QUERYSTRING della CommonRuleSet (wafv2.py:123-130) - meccanismo corretto per gestire i falsi positivi, lo si generalizza.",
+      "WAFv2: l'IP allow-list opzionale con switch a default_action=block (wafv2.py:45-49) - pattern utile per ambienti ristretti, conservato come allow_ip_set.",
+      "WAFv2 visibility_config: sampledRequestsEnabled + cloudWatchMetricsEnabled gia' True su tutte le regole - necessari per la pipeline monitoring->Wolico, conservati.",
+      "CloudFront: PriceClass_100 (cloudfront.py:30) e viewer_protocol_policy=REDIRECT_TO_HTTPS (cloudfront.py:162) - findings §7, conservati come default.",
+      "CloudFront: compress=True (cloudfront.py:174) e la cache policy disabilitata per gli origin dinamici ALB/HTTP (cloudfront.py:153-158, no-cache con min/max TTL 0/1s per supportare cache-disabled+header-forward) - corretti per un reverse-proxy API, conservati.",
+      "CloudFront: default_root_object='index.html' (cloudfront.py:69) - corretto per SPA.",
+      "Generazione automatica del nome bucket <env>-<app>-fe-<root> (buckets.py:121) e dei nomi WAF (wafv2.py:32) - convenzione di naming coerente con la flotta, conservata."
+    ],
+    "open_questions": "1) Cert CloudFront in us-east-1: l'edge ha bisogno di un cert ACM in us-east-1 per i domini custom sul viewer. Va creato cross-region dal modulo cert (DnsValidatedCertificate o stack dedicato us-east-1)? Conferma che TOOL-06 copre ENTRAMBI i cert (regionale eu-west-1 per origin ALB + us-east-1 per viewer CloudFront), non solo il regionale citato nel brief.\n2) Rotazione del secret origin-header (NETSEC-03): serve rotation automatica? La rotazione richiede aggiornamento atomico di header CloudFront + listener-rule ALB (entrambi CDK-owned ma in propagazioni diverse). Default proposto: rotation OFF, rotazione manuale orchestrata. Confermare se accettabile per prod.\n3) WAF su scope CLOUDFRONT vive in us-east-1: i log WAF finiscono in us-east-1, mentre il resto del monitoring/Wolico-ingest e' su eu-west-1. Confermare che la pipeline monitoring->Wolico sa raccogliere da us-east-1 (subscription filter cross-region o forwarding).\n4) Promozione COUNT->BLOCK: e' automatica dopo N giorni o sempre manuale per-cliente? Proposta: manuale, mode esplicito in values.yaml, perche' i falsi positivi variano per app (es. backend con upload grandi).\n5) Vincolo '1 infra <-> 2 app' (crif/prima-power/laif): ogni app ha la sua Distribution+WAF separati nell'account, o si condivide una distribuzione con behavior multipli? Proposta: una Distribution per app (isolamento, naming coerente); confermare che non serve consolidamento edge.\n6) Asset critici nei bucket FE prod esistenti: quali clienti hanno contenuto non rigenerabile dalla CI (serve RETAIN + sync pre-migrazione)? Da censire prima dello step 3."
+  },
+  {
+    "key": "OBS",
+    "title": "Monitoring & integrazione Wolico",
+    "module": "observability (laif_cdk.observability) — alarm-set CloudWatch + integrazione Wolico",
+    "purpose": "Fornisce l'osservabilità white-box che oggi NON esiste (findings §1: zero `cloudwatch.Alarm`/SNS/dashboard in 3.970 righe; Container Insights/PI/log-export off) e la convoglia su Wolico come single pane of glass (errori app + alarm infra + health). Risolve brief #1 (\"zero monitoring, i down li scoprono i clienti\") e il caso Nivi (i 4 alarm che avrebbero segnalato i 127 min di down). Implementa MON-01..06; sostituisce MON-07/08 (Checkmk, morto, eliminato) con \"CloudWatch -> SNS -> endpoint ingest Wolico\", riusando il modello Wolico esistente (Applications.health + routing maintainer + soglie email). Il modulo NON crea risorse fuori da CloudFormation (vincolo 4: tutto CDK-owned); la dashboard CloudWatch resta vista tecnica opzionale. Account-isolation mantenuta (vincolo 2): l'integrazione e' PUSH per-account (SNS -> Lambda subscriber -> HTTPS POST a Wolico), nessuna lettura cross-account; il pull cross-account e' documentato ma NON adottato di default.",
+    "constructs": [
+      {
+        "name": "Observability",
+        "role": "Construct facade del modulo: orchestratore unico montato dallo stack cliente. Riceve i riferimenti alle risorse osservate (servizio ECS, ALB/target group, istanza RDS, log group) e i feature flag, e compone AlarmSet + WolicoSink + (opz.) Dashboard + log retention. Espone proprieta' read-only: .topic (SNS), .alarms (lista), .dashboard. E' l'unico costrutto che gli altri moduli (backend-ecs, rds, frontend) importano per registrarsi.",
+        "key_params": "service_name:str (=cod_application Wolico, no default), environment:Literal['dev','prod'] (no default), maintainers:list[str] (email, fallback se Wolico down; default []), enabled:bool=True (master flag: tutto il modulo on/off), wolico:bool=True (push verso Wolico), dashboard:bool=False (vista tecnica opzionale, OFF di default), sns_email_fallback:bool=True (anche email diretta dal topic, oltre Wolico)"
+      },
+      {
+        "name": "AlarmSet",
+        "role": "Genera l'insieme di alarm di DEFAULT sicuri-by-default per i 3 target standard LAIF: backend ECS (i 4 del caso Nivi), ALB, RDS. Ogni alarm e' parametrico ma con soglie sensate hardcoded come default (non piu' 'nessun alarm'). treat_missing_data=BREACHING sul liveness (un task morto = niente metrica = deve allarmare, lezione Nivi). Tutti gli alarm puntano allo stesso SNS topic in ALARM e in OK (cosi' Wolico vede il rientro).",
+        "key_params": "BACKEND (on di default): cpu_high (>80% 3x5min), mem_high (>80% 3x5min), running_tasks_low (RunningTaskCount < desired, treat_missing=BREACHING — l'alarm che mancava a Nivi), alb_5xx (HTTPCode_Target_5XX_Count > soglia su 3x1min), alb_unhealthy_hosts (UnHealthyHostCount >=1). RDS (on di default): rds_cpu (>80%), rds_free_storage (< 10% allocato), rds_freeable_mem (< 256MB), rds_connections (> 80% max_connections), rds_read/write_latency (opz, off). Tutte le soglie override-abili da YAML. period/evalp/datapoints esposti."
+      },
+      {
+        "name": "WolicoSink",
+        "role": "IL cuore dell'integrazione. SNS topic + subscription a una Lambda (alarm-forwarder) per-account che normalizza il messaggio CloudWatch e fa HTTPS POST autenticato all'endpoint ingest di Wolico (POST /api/ingest/infra-alarm). Lambda in subnet PRIVATE_ISOLATED non serve egress a internet generico: usa un interface endpoint? No — Wolico e' su internet, quindi la Lambda gira in subnet PUBLIC dedicata o usa l'endpoint pubblico via il singolo path HTTPS; scelta: Lambda FUORI dalla VPC (default) per raggiungere Wolico senza NAT, dato che non tocca RDS. Retry + DLQ (SQS) sui POST falliti; se Wolico irraggiungibile, SNS fa comunque fan-out su email fallback. Secret (Wolico ingest API key) in Secrets Manager, letto via env. Idempotency-Key = alarm_arn+state_change_time.",
+        "key_params": "wolico_ingest_url:str (no default, da config org), wolico_api_key_secret_arn:str (Secrets Manager; default convenzione /<env>/<app>/wolico-ingest-key), lambda_in_vpc:bool=False (default fuori-VPC per egress diretto HTTPS, niente NAT), dlq_retention_days:int=14, sns_email_fallback subscribers presi da maintainers. timeout 10s, 2 retry."
+      },
+      {
+        "name": "Dashboard",
+        "role": "Vista tecnica CloudWatch OPZIONALE (MON-05), OFF di default. Compone widget per backend/ALB/RDS dalle stesse metriche degli alarm + Container Insights + RDS Performance Insights link. Non e' il canale primario (quello e' Wolico): e' per il deep-dive ingegneristico quando Wolico segnala un'anomalia.",
+        "key_params": "enabled:bool=False (dashboard flag), include_container_insights:bool=True (quando il flag e' on), period_default:Duration=5min, una dashboard per service_name."
+      },
+      {
+        "name": "LogConfig",
+        "role": "Disciplina di log retention (MON-06) sicura-by-default: niente piu' retention infinita (finding §Costi: log Lambda retention infinita). Applica retention differenziata per ambiente ai log group creati dagli altri moduli, esposta come helper che gli altri costrutti chiamano. Container Insights ON e RDS PI/Enhanced Monitoring sono ATTIVATI qui in coordinamento con i moduli backend-ecs e rds (vedi depends_on), ma i flag vivono qui per coerenza monitoring.",
+        "key_params": "log_retention_dev:RetentionDays=ONE_WEEK (default), log_retention_prod:RetentionDays=ONE_MONTH (default), container_insights:bool=True (MON-02, spesa lieve), rds_performance_insights:bool=True (MON-03), rds_enhanced_monitoring_interval:int=60s (MON-03), rds_pi_retention=7gg dev / default prod. RemovalPolicy log group: dev DESTROY, prod RETAIN."
+      }
+    ],
+    "config_yaml": "observability:\n  enabled: true                 # master flag del modulo (default ON, sicuro-by-default)\n  wolico: true                  # push CloudWatch -> Wolico (canale primario)\n  dashboard: false              # vista tecnica CloudWatch opzionale (MON-05), OFF di default\n  sns_email_fallback: true      # email diretta dal topic se Wolico irraggiungibile\n  maintainers:                  # destinatari fallback (Wolico ha il suo routing maintainer)\n    - devops@laifgroup.com\n  wolico_ingest_url: https://wolico.laifgroup.com/api/ingest/infra-alarm\n  wolico_api_key_secret: /prod/nivi/wolico-ingest-key   # ARN o nome Secrets Manager\n\n  logs:\n    retention_dev: ONE_WEEK     # MON-06: niente piu' retention infinita\n    retention_prod: ONE_MONTH\n    container_insights: true    # MON-02\n  rds:\n    performance_insights: true  # MON-03 (coord. modulo rds)\n    enhanced_monitoring_seconds: 60\n\n  # Tutti gli alarm sono ON di default con soglie sensate; qui si fa SOLO override.\n  alarms:\n    backend:\n      cpu_high: { threshold: 80, evaluation_periods: 3, period_minutes: 5 }\n      running_tasks_low: { enabled: true }     # l'alarm che mancava a Nivi (treat_missing=BREACHING)\n      alb_5xx: { threshold: 10, period_minutes: 1, evaluation_periods: 3 }\n    rds:\n      free_storage_pct: { threshold: 10 }\n      connections_pct: { threshold: 80 }\n      read_latency: { enabled: false }         # opzionale, off di default\n# --- esempio ambiente dev: piu' leggero ---\n# observability:\n#   dashboard: false\n#   logs: { container_insights: false }        # risparmio su dev\n#   rds: { performance_insights: false }",
+    "defaults_flipped": [
+      "Da ZERO alarm in tutta la libreria (finding §1, §6 'Zero monitoring') a un alarm-set ON di default: 5 backend (i 4 del caso Nivi + UnHealthyHost) + ~5 RDS + ALB 5xx. Il modulo e' ON di default (enabled=true), non opt-in.",
+      "running_tasks_low usa treat_missing_data=BREACHING (non NOT_BREACHING): un task morto smette di emettere metriche e DEVE allarmare. E' esattamente il buco che ha reso invisibili i 127 min di down di Nivi.",
+      "Container Insights: da OFF (finding §4) a ON di default (MON-02).",
+      "RDS Performance Insights + Enhanced Monitoring + log export: da tutti OFF (finding §4) a ON di default (MON-03), coordinato col modulo rds.",
+      "Log retention: da infinita (finding §Costi: 'log Lambda retention infinita') a disciplinata (dev ONE_WEEK, prod ONE_MONTH) — MON-06.",
+      "Esiste un SNS topic + sink: prima 'nessun SNS' (finding §1, live Casartelli/Nivi). Ora ogni stack ha topic -> Wolico + email fallback (MON-04).",
+      "Checkmk/LCP: ELIMINATO (decisione strategica #2). MON-07/MON-08 superate: il canale non e' piu' 'Checkmk + CloudWatch' ne' 'tutto CloudWatch con Synthetics', ma 'CloudWatch -> Wolico'."
+    ],
+    "feature_flags": [
+      {
+        "flag": "observability.enabled",
+        "default": "true",
+        "effect": "Master switch del modulo. OFF disabilita tutto (alarm, SNS, sink, dashboard). Default ON = sicuro-by-default; si spegne solo in casi limite."
+      },
+      {
+        "flag": "observability.wolico",
+        "default": "true",
+        "effect": "ON: crea WolicoSink (Lambda forwarder + subscription) e instrada gli alarm a Wolico. OFF: gli alarm restano su SNS -> solo email fallback (utile in account che non parlano con Wolico)."
+      },
+      {
+        "flag": "observability.dashboard",
+        "default": "false",
+        "effect": "ON: crea la dashboard CloudWatch tecnica (MON-05). OFF di default perche' il canale primario e' Wolico; la dashboard e' un costo/rumore solo per il deep-dive."
+      },
+      {
+        "flag": "observability.sns_email_fallback",
+        "default": "true",
+        "effect": "ON: il topic SNS ha anche subscription email ai maintainers, cosi' un alarm arriva anche se Wolico e' down. OFF: solo path Wolico."
+      },
+      {
+        "flag": "observability.logs.container_insights",
+        "default": "true",
+        "effect": "MON-02. ON: Container Insights sul cluster ECS (spesa lieve). OFF tipicamente nei dev per risparmiare."
+      },
+      {
+        "flag": "observability.rds.performance_insights",
+        "default": "true",
+        "effect": "MON-03. ON: PI + Enhanced Monitoring sull'istanza RDS. Coordinato col modulo rds (il flag e' letto da entrambi). OFF nei dev."
+      },
+      {
+        "flag": "observability.alarms.backend.running_tasks_low.enabled",
+        "default": "true",
+        "effect": "L'alarm anti-Nivi. ON: allarma se RunningTaskCount < desired (treat_missing=BREACHING). Esposto come flag per chi ha workload batch a 0 task."
+      },
+      {
+        "flag": "observability.alarms.rds.read_latency.enabled / write_latency.enabled",
+        "default": "false",
+        "effect": "Alarm di latenza RDS opzionali, OFF di default (rumorosi); si accendono dove la latenza DB e' un SLO."
+      },
+      {
+        "flag": "observability.wolico_sink.lambda_in_vpc",
+        "default": "false",
+        "effect": "OFF (default): la Lambda forwarder gira FUORI dalla VPC per raggiungere Wolico via HTTPS pubblico senza NAT (la Lambda non tocca RDS). ON: solo se policy di rete impone tutto in-VPC -> richiede egress (interface endpoint/NAT) e va valutato col modulo networking."
+      }
+    ],
+    "depends_on": [
+      "networking (per il riferimento VPC quando lambda_in_vpc=true; di default la Lambda forwarder e' fuori-VPC e non dipende dall'egress)",
+      "backend-ecs (gli passa cluster/service/ALB/target group da osservare; legge il flag container_insights per attivarlo sul cluster)",
+      "rds (gli passa l'istanza DB; coordina performance_insights/enhanced_monitoring — i flag vivono in observability ma il modulo rds li applica all'istanza)",
+      "secrets/config (il segreto wolico-ingest-key in Secrets Manager, convenzione /<env>/<app>/wolico-ingest-key)",
+      "jobs/tasks (opzionale: alarm su DLQ depth e Fargate task failed quando il modulo jobs e' attivo)"
+    ],
+    "implements": [
+      "MON-01 (4 alarm CloudWatch del fix Nivi: cpu/running-tasks/5xx/unhealthy-host)",
+      "MON-02 (Container Insights ON)",
+      "MON-03 (RDS Performance Insights + Enhanced Monitoring + log export)",
+      "MON-04 (topic SNS -> canale di notifica; qui ramificato Wolico + email fallback)",
+      "MON-05 (dashboard CloudWatch tecnica, opzionale OFF)",
+      "MON-06 (log retention disciplinata)",
+      "SOSTITUISCE MON-07 e MON-08 (entrambe Checkmk): nuovo design 'CloudWatch -> SNS -> ingest Wolico' (decisione strategica #2)"
+    ],
+    "migration_notes": "ORDINE consigliato per la flotta (24 clienti, ~60 account), risk-managed: 1) Lato WOLICO (one-off, prima di tutto): aggiungere l'endpoint ingest POST /api/ingest/infra-alarm (auth Bearer/HMAC con chiave per-app), un modello InfraAlarm (o estendere Applications) con stato derivato dagli alarm, e collegare il routing maintainer + soglie email gia' esistente (lo stesso che oggi gestisce errori app e Applications.health). Senza endpoint, abilitare wolico=false e usare solo email fallback. 2) Per ogni account: creare il secret /<env>/<app>/wolico-ingest-key (CDK-owned o seed SSM->Secrets), poi deploy del modulo con enabled=true, wolico=true. Il modulo e' ADDITIVO (solo nuove risorse: alarm, SNS, Lambda, DLQ, log retention) -> nessun replace di risorse esistenti, basso rischio. 3) Pilota su 1 cliente non critico (NON Nivi/Coci prod) per validare il payload e il routing Wolico end-to-end; poi roll-out a batch. 4) Nivi e' il caso di validazione del valore: dopo il deploy, i 4 alarm devono accendersi sulla causa nota (saturazione 1 vCPU -> task kill). RISCHI: (a) alarm noise iniziale -> soglie default tarate ampie + period 5min, raffinare dopo 1-2 settimane di baseline; (b) Wolico irraggiungibile/401 (gia' visto in onboarding bcons) -> email fallback garantisce no perdita di segnale, e DLQ trattiene i POST falliti; (c) container_insights/PI aggiungono spesa lieve (coerente col brief: su CloudWatch si spende DI PIU', non si taglia — baseline §1) -> nei dev si possono spegnere via flag. 5) ELIMINAZIONE Checkmk/LCP: NON spegnere finche' il modulo non e' live e validato sull'account (regola di sicurezza del catalogo); poi rimuovere il gruppo lcp da laif-cli/laif-factory (sparisce l'orfano #8 di TOOL-02). 6) Drift: i 2 alarm auto-ECS esistenti (live Casartelli/Nivi) restano o si sostituiscono coi nostri; nessuna azione distruttiva richiesta.",
+    "preserve": [
+      "image_scan_on_push (findings §7) — non e' di questo modulo ma il modulo non lo tocca; resta nel modulo ECR/backend.",
+      "Il MODELLO Wolico esistente da riusare 1:1 (NON reinventare): error-reporting app ogni 10s con aggregazione/dedup, soglie email ai maintainer, scan health ogni 5min su /api/health/database e /api/summary che aggiorna Applications.health + email su cambio stato, routing maintainer. Il nuovo endpoint ingest infra-alarm si AGGANCIA a questo stesso routing/soglie -> Wolico resta single pane of glass (errori app + alarm infra + health) senza duplicare logica di notifica.",
+      "Idea 'scheduled downtime monitoring' (findings §7, oggi su Checkmk/LCP): va riproposta lato Wolico come finestra di silenziamento alarm, non persa.",
+      "La disciplina RemovalPolicy: log group prod RETAIN (coerente col preserve RETAIN/deletion_protection di findings §7).",
+      "Filtro stack 'disabled' (seme della modularita' on/off, findings §7) -> qui diventa i feature flag del modulo."
+    ],
+    "open_questions": "CONTRATTO ENDPOINT WOLICO (proposta da confermare con il team Wolico): POST /api/ingest/infra-alarm, auth Bearer o HMAC con chiave per-app; header Idempotency-Key = alarm_arn + state_change_time; body JSON: {cod_application, environment(dev|prod), account_id, region, alarm_name, alarm_arn, metric(namespace,name,dimensions), state(ALARM|OK|INSUFFICIENT_DATA), previous_state, reason, threshold, value, timestamp, source:'cloudwatch'}. Wolico mappa state->severita', aggiorna Applications.health (o nuova entita' InfraAlarm) e instrada con le soglie/maintainer esistenti. LATO LIBRERIA CDK: alarm + SNS + Lambda forwarder (normalizza SNS->payload sopra) + DLQ + secret + retention. LATO WOLICO: endpoint, auth, modello, mapping severita', dedup/silenziamento, vista unificata. DA SCIOGLIERE: (1) auth: API key statica per-app in Secrets Manager vs HMAC del body — propendo HMAC (no leak chiave). (2) Granularita': un endpoint per-account che pusha (scelto, coerente con account-isolation: niente cross-account) vs Wolico che fa PULL via GetMetricData con role cross-account assumibile — il PULL viola lo spirito dell'isolamento e richiede ~60 role + Wolico che conosce i 60 account; lo SCONSIGLIO e lo lascio documentato come alternativa, non default. (3) La Lambda forwarder fuori-VPC (default) e' accettabile o si vuole tutto in-VPC con interface endpoint? (4) Deduplica: la fa Wolico (come per gli errori app) o si invia ogni transizione? Propongo: inviare ogni transizione di stato, dedup lato Wolico. (5) Serve un alarm 'composite' per ridurre il rumore (es. backend down = task_low AND 5xx) prima di notificare Wolico?"
+  },
+  {
+    "key": "JOBS",
+    "title": "Jobs / ETL / Task",
+    "module": "jobs",
+    "purpose": "Modulo dichiarativo unico per TUTTI i task/ETL/orchestrazioni della flotta LAIF (brief #4: \"nessuna soluzione pulita per ETL/task\"). Da un blocco di config `jobs: [...]` la libreria genera Fargate scheduled/on-demand/queue-consumer + EventBridge Scheduler + SQS(+DLQ) + (opzionale) Step Functions NATIVE. Sostituisce e collassa i 5 fork attuali in una sola superficie: (1) ETLStack EC2 (gmm/andriani/prima-power), (2) uso diretto dei construct EcsEC2Task (coci), (3) workflow GH gemello con immagine `etl:latest` build-arg FLG_ETL=1 (andriani-sequencing/prima-power), (4) background task dentro il backend (co-causa del down Nivi: compete per l'unico vCPU del web), (5) factory Step Functions custom (~1.639 righe: step_functions.py 271 + lib/step_functions 1.368) da buttare in favore del DSL CDK nativo. Implementa TASK-01 (modulo jobs dichiarativo), TASK-02 (Fargate default, mai EC2 h24), TASK-03 (EventBridge Scheduler per i cron), TASK-04 (SQS con DLQ + visibility sano), TASK-05 (Step Functions native, elimina la factory), TASK-06 (elimina background-task + workflow FLG_ETL). Copre task piccoli/medi/grandi e sync/async/on-demand come da brief. Sicuro-by-default e config-driven con feature flag per-job e di modulo.",
+    "constructs": [
+      {
+        "name": "JobsModule",
+        "role": "Construct di facciata: unico punto d'ingresso del modulo. Riceve la lista `jobs` (gia' validata da modelli Pydantic) + i riferimenti condivisi dell'account (vpc, cluster Fargate, ecr, db, secret, subnet PRIVATE_ISOLATED/PRIVATE_WITH_EGRESS, security group, sns_ingest_topic per il bridge Wolico). Itera sui job e instanzia il construct giusto per `kind`. Espone `.jobs` (dict name->construct), `.queues` (name->Queue), `.workflows` (name->StateMachine) per i wiring espliciti (grant IAM, allarmi). Non crea mai capacity provider EC2 a meno di `compute: ec2` esplicito.",
+        "key_params": "jobs (list, obbligatoria), cluster (default: cluster Fargate condiviso dal modulo ecs/compute; se assente ne crea uno Fargate-only senza ASG), vpc_subnets (default PRIVATE_ISOLATED quando il job non ha egress; PRIVATE_WITH_EGRESS via interface endpoints se serve rete esterna), assign_public_ip (default False), sns_ingest_topic (default None -> nessun allarme; se passato wira fail-alarm->Wolico)"
+      },
+      {
+        "name": "ScheduledJob",
+        "role": "kind=scheduled. Genera una task definition Fargate + una EventBridge Scheduler schedule (schedule.Schedule / CfnSchedule) con target EcsRunTask. Sostituisce ETLStack.add_scheduled_task + EventBridge Rule legacy. RunTask one-shot: nessuna istanza accesa tra un'esecuzione e l'altra (vs EC2 capacity provider h24). Allarme su esecuzione fallita (stoppedReason / task exit!=0) via metrica EventBridge->SNS->Wolico.",
+        "key_params": "schedule (cron|rate, obbligatorio), command (lista o stringa splittata), timeout (default 1h, hard cap su EventBridge target), retry (default 0 a livello schedule; on-failure DLQ EventBridge opzionale), enabled (default True), flexible_time_window (default OFF)"
+      },
+      {
+        "name": "OnDemandJob",
+        "role": "kind=on-demand. Crea SOLO la task definition Fargate (+ ruolo, +log group), nessuno scheduler. Avviabile via `aws ecs run-task`, da Step Functions, da Lambda o dal backend (RunTask). Sostituisce il fork 'uso diretto del construct' (coci) e i background-task on-demand. Esporta task_definition + run-task helper params (subnet/sg/cluster) come output CFN per il chiamante.",
+        "key_params": "command (default: entrypoint immagine), size (cpu/mem), expose_run_role (default True: crea ruolo che il backend puo' assumere per RunTask, scoping su questa sola taskdef)"
+      },
+      {
+        "name": "QueueJob",
+        "role": "kind=queue. Crea SQS Queue + DLQ (sempre) + un servizio ECS Fargate consumer long-running con autoscaling on/off sulla profondita' coda (ApproximateNumberOfMessagesVisible target tracking). Sostituisce i background-task async del backend (li sposta fuori dal web, risolve la co-causa Nivi). Visibility timeout = 6x il task timeout (default sano), redrive a DLQ dopo max_receive_count. Allarmi: DLQ>0 e ApproximateAgeOfOldestMessage->SNS->Wolico.",
+        "key_params": "queue (nome logico), max_receive_count (default 5), visibility_timeout (default = 6*timeout, no piu' 43200 hardcoded), fifo (default False, bug CDK fifo=False evitato usando None), min_consumers (default 0 dev / 1 prod), max_consumers (default 1, scaling OFF salvo autoscale:true), autoscale (default False)"
+      },
+      {
+        "name": "WorkflowJob",
+        "role": "kind=workflow. Orchestrazione multi-step con Step Functions NATIVE (aws_cdk.aws_stepfunctions + tasks.EcsRunTask / sfn.Map / Choice / Parallel), NON la factory custom. Compone i job `scheduled`/`on-demand` gia' definiti come step `EcsRunTask` (.run_sync). Opzionalmente schedulabile (EventBridge Scheduler -> StartExecution). Sostituisce StepFunctionStack/StepFunctionStackV2 + le ~1.639 righe di DSL custom. Allarme su ExecutionsFailed->SNS->Wolico.",
+        "key_params": "steps (lista dichiarativa: ref a job + concorrenza Map/Parallel), schedule (opzionale), state_machine_type (default STANDARD; EXPRESS opt-in per high-volume short), timeout (default 24h)"
+      },
+      {
+        "name": "JobTaskDefinition (interno)",
+        "role": "Helper condiviso: costruisce la FargateTaskDefinition con i default sicuri (immagine da ECR per-digest non :latest mutabile, log group con retention dal modulo monitoring, task role minimo, secret iniettati come `secrets` non env in chiaro, container insights ereditato dal cluster). Mappa `size` (small/medium/large o cpu/mem espliciti) sulle combinazioni Fargate valide. Punto unico dove si ribaltano i default rotti dell'ETLStack.",
+        "key_params": "size->(cpu,mem): small=256/512, medium=512/1024, large=2048/4096, xlarge=4096/8192 (cap Fargate 16vCPU/120GB); image_tag (default: digest immutabile, mai :latest); readonly_root_fs (default True dove possibile)"
+      }
+    ],
+    "config_yaml": "jobs:\n  # 1) ETL notturno schedulato (sostituisce ETLStack EC2 + add_scheduled_task di prima-power)\n  - name: etl-nightly\n    kind: scheduled\n    command: \"run etl --steps LND --steps STG --steps TRN --steps PRS --run-type ALL --send-etl-email\"\n    schedule: \"cron(0 2 * * ? *)\"        # EventBridge Scheduler, non Rule\n    size: large                           # 2 vCPU / 4 GB su Fargate, ZERO istanze tra i run\n    timeout: 3h\n    image: etl                            # repo ECR dedicato; tag = digest immutabile (no :latest)\n    needs: [db, secret:dwh]               # grant generati: GetSecretValue scoping + SG verso RDS\n    enabled: true\n\n  # 2) Job on-demand pesante (sostituisce coci EcsEC2Task usato a mano)\n  - name: algo-batch\n    kind: on-demand\n    command: \"run algo\"\n    size: { cpu: 4096, mem: 16384 }       # taglia esplicita; Fargate (16vCPU/120GB max)\n    # compute: ec2                         # OPT-OUT esplicito solo per GPU/oltre-limiti-Fargate\n    needs: [db, secret:default]\n\n  # 3) Worker async su coda (sostituisce il background-task nel backend → fuori dal web)\n  - name: doc-processor\n    kind: queue\n    command: \"run worker\"\n    size: medium\n    queue: doc-jobs                       # SQS + DLQ creati in automatico\n    visibility_timeout: auto              # = 6 × timeout (sano, niente 43200 hardcoded)\n    max_receive_count: 5                  # poi → DLQ\n    autoscale: false                      # flag: scala sui messaggi in coda (default OFF)\n    min_consumers: 0                      # dev può andare a 0; prod default 1\n\n  # 4) Orchestrazione multi-step (sostituisce la factory Step Functions custom)\n  - name: full-pipeline\n    kind: workflow\n    schedule: \"cron(0 1 * * ? *)\"\n    steps:\n      - run: etl-nightly                  # riusa il job già definito sopra\n      - parallel:\n          - run: algo-batch\n          - run: doc-processor\n      - run: notify                       # un altro job on-demand\n\n# Default sicuri del modulo (ribaltano l'ETLStack): tutto Fargate, subnet private,\n# niente IP pubblico, niente capacity provider EC2 a meno di compute:ec2 esplicito.\njobs_defaults:\n  compute: fargate\n  subnets: PRIVATE_ISOLATED               # PRIVATE_WITH_EGRESS solo se needs:internet\n  assign_public_ip: false\n  alarms_to_wolico: true                  # SNS → endpoint ingest Wolico su fallimento",
+    "defaults_flipped": [
+      "Compute: EC2 capacity provider h24 (ETLStack default `ecs_task_type` con ASG min/max/desired e managed scaling) -> FARGATE one-shot di default; nessuna istanza accesa tra le esecuzioni. EC2 solo come opt-out esplicito `compute: ec2` per GPU/task oltre i limiti Fargate (16 vCPU/120 GB).",
+      "Rete: ETLStack creava/usava `VpcWithSubnet` (solo subnet PUBLIC, networks.py:29) ed esponeva `eip` per i task -> default `PRIVATE_ISOLATED` (no egress) o `PRIVATE_WITH_EGRESS` via interface endpoints per-account; `assign_public_ip=False`. Nessun EIP sui task.",
+      "SQS visibility: SimpleQueue hardcodava `visibility_timeout=43200` (max possibile) e NON aveva DLQ -> default `visibility = 6 × task timeout` e DLQ SEMPRE creata con `max_receive_count=5` (TASK-04).",
+      "Immagine: i fork usavano `:latest` mutabile (vedi ECR push `etl:latest`) -> default deploy per digest immutabile (allineato a SCALE-08).",
+      "Secret: ETLStack passava `DB_SECRET_ARN` come env var in chiaro nel container -> iniettato come `secrets` ECS (riferimento Secrets Manager), non come variabile d'ambiente leggibile.",
+      "IAM: i fork (coci) mettevano `secretsmanager:GetSecretValue` su `resources=['*']` -> ruolo per-job con scoping sull'ARN del secret/parametro effettivamente dichiarato in `needs`.",
+      "Scheduling: da EventBridge `Rule` (cron classico dell'add_scheduled_task) -> EventBridge `Scheduler` (TASK-03: one-shot, flexible time window opzionale, niente regola sempre-attiva).",
+      "Orchestrazione: dalla factory custom (`StepFunctionFactory`, ~1.639 righe di DSL Pydantic) -> Step Functions NATIVE del CDK (`aws_stepfunctions` + `tasks.EcsRunTask`), zero DSL proprietario (TASK-05).",
+      "Allarmi: ETLStack/forks non avevano alcun alarm sui task falliti -> di default ogni job emette allarme su fallimento (scheduled: task exit!=0; queue: DLQ>0 + età messaggio; workflow: ExecutionsFailed) verso SNS -> ingest Wolico."
+    ],
+    "feature_flags": [
+      {
+        "flag": "jobs (presenza del blocco)",
+        "default": "assente",
+        "effect": "Se assente, il modulo non sintetizza nulla: zero coste/risorse per i clienti senza task. Config-driven puro (TASK-01)."
+      },
+      {
+        "flag": "<job>.compute",
+        "default": "fargate",
+        "effect": "fargate (default, mai EC2 h24) | ec2 (opt-out esplicito: crea capacity provider per task GPU/oltre i limiti Fargate). Implementa la regola TASK-02."
+      },
+      {
+        "flag": "<job>.autoscale (kind=queue)",
+        "default": "false",
+        "effect": "OFF: consumer a `min_consumers` fisso. ON: target tracking su ApproximateNumberOfMessagesVisible tra min/max_consumers. E' il feature-flag autoscaling del brief applicato ai worker."
+      },
+      {
+        "flag": "<job>.enabled (kind=scheduled)",
+        "default": "true",
+        "effect": "Disabilita la schedule EventBridge senza rimuovere la task definition (replica `enabled` dell'add_scheduled_task, utile per pausare ETL in dev)."
+      },
+      {
+        "flag": "<job>.subnets / needs:internet",
+        "default": "PRIVATE_ISOLATED",
+        "effect": "Senza accesso a internet il job resta isolato (DB via SG, AWS API via interface endpoints). `needs: [internet]` lo sposta su PRIVATE_WITH_EGRESS. Mai PUBLIC."
+      },
+      {
+        "flag": "jobs_defaults.alarms_to_wolico",
+        "default": "true",
+        "effect": "ON: collega gli allarmi di fallimento job (CloudWatch->SNS) all'endpoint di ingest Wolico riusando il routing maintainer. OFF: nessun allarme (sconsigliato; per ambienti throwaway)."
+      },
+      {
+        "flag": "<job>.state_machine_type (kind=workflow)",
+        "default": "STANDARD",
+        "effect": "STANDARD (orchestrazioni lunghe, audit completo) | EXPRESS (alta frequenza/breve durata, costo a esecuzione). Opt-in."
+      },
+      {
+        "flag": "<job>.fifo (kind=queue)",
+        "default": "false",
+        "effect": "Coda standard. Se true crea `.fifo` (con il workaround del bug CDK: internamente None, mai False, come gia' notato in sqs.py)."
+      }
+    ],
+    "depends_on": [
+      "modulo compute/ecs (cluster Fargate condiviso + ECR per-account, immagini per digest)",
+      "modulo networking (VPC + subnet PRIVATE_ISOLATED/PRIVATE_WITH_EGRESS + interface endpoints ECR api+dkr/Logs/Secrets/SSM/STS per-account: i job in subnet privata pullano l'immagine, scrivono log e leggono secret senza NAT)",
+      "modulo rds/db (security group + secret ARN che i job in `needs` consumano; RDS PRIVATE_ISOLATED raggiungibile via SG)",
+      "modulo monitoring (topic SNS di ingest verso Wolico + log retention disciplinata: i job emettono i loro allarmi di fallimento su quel topic)",
+      "modulo secrets/ssm (riferimenti ARN per l'iniezione sicura via `secrets` ECS e lo scoping IAM)"
+    ],
+    "implements": [
+      "TASK-01",
+      "TASK-02",
+      "TASK-03",
+      "TASK-04",
+      "TASK-05",
+      "TASK-06"
+    ],
+    "migration_notes": "ORDINE consigliato (per cliente, dipende dal nuovo modulo networking gia' migrato per gli interface endpoints). FASE 1 (a basso rischio, no traffico utente): migrare gli ETL schedulati. I clienti gmm/andriani/prima-power hanno `ETLStack(...).add_scheduled_task(...)` in app.py: si traducono 1:1 in `jobs: [{kind: scheduled, command, schedule, size}]` (il comando e la cron esistono gia' in prima-power-infra/{dev,prod}.yaml). RISCHIO: l'ETLStack EC2 girava su istanza con SSH/EIP; il nuovo job e' Fargate in subnet privata -> verificare che l'ETL non dipenda da tool/filesystem dell'host EC2 (es. mount EFS, binari di sistema) e che 4 GB/2 vCPU Fargate bastino (andriani usava c7g.4xlarge: candidato a `size: {cpu,mem}` esplicito o, se >16 vCPU/120 GB o GPU, `compute: ec2` opt-out). FASE 2: coci usa direttamente `EcsEC2Task` con 16 GB di reservation e IAM `resources=['*']`: diventa `kind: on-demand, size:{cpu:4096,mem:16384}` con `needs:[db,secret]` (IAM auto-scoping); verificare i 16 GB vs Fargate. FASE 3: convergere il workflow GH gemello `FLG_ETL=1` (andriani-sequencing, prima-power: build separata di `etl:latest`). Non serve piu' un'immagine diversa per l'ETL: o si usa la stessa immagine col `command` override del job, o si tiene il repo ECR `etl` ma il deploy passa dal modulo jobs (per digest), eliminando il workflow GH duplicato e il build-arg. FASE 4: spostare i background-task async del backend su `kind: queue` (worker fuori dal web service): e' la co-causa del down Nivi (competono per l'unico vCPU del backend single-worker) -> beneficio di affidabilita' immediato. FASE 5: chi usa StepFunctionStack/StepFunctionStackV2 (la factory custom): riscrivere come `kind: workflow` in DSL nativo. RISCHIO BASSO confermato: 0/24 repo importano la factory Step Functions (catalogo TASK-05), quindi e' codice morto da rimuovere senza migrazione reale di clienti; tenere il vecchio costrutto solo finche' non si verifica che nessun account la usi davvero. ROLLBACK: ogni job e' additivo e indipendente; gli ETL schedulati possono coesistere (vecchio `enabled:false`, nuovo attivo) per un run di confronto prima di rimuovere l'ETLStack. ATTENZIONE STATEFUL: le code SQS nuove hanno nome logico nuovo -> i producer (backend) vanno ripuntati; svuotare la vecchia coda prima del cutover. ATTENZIONE DB: i job in PRIVATE_ISOLATED raggiungono RDS via SG ma NON internet: se un ETL chiama API esterne serve `needs:[internet]` (PRIVATE_WITH_EGRESS) o non parte.",
+    "preserve": [
+      "ECR `image_scan_on_push=True` e la lifecycle rule 'tieni ultime 5 immagini' che l'ETLStack gia' applicava al repo etl (findings §7): il modulo jobs riusa il modulo ECR con questi default.",
+      "Lo scoping IAM stretto per SSM gia' presente nell'ETLStack (`ssm:GetParameter` su `/{env}/{app}` e `/{env}/{app}/*`, non `*`): diventa il default del ruolo per-job (l'opposto del `resources=['*']` di coci).",
+      "Il pattern `enabled` dell'add_scheduled_task (abilita/disabilita la schedule senza distruggere la taskdef): riproposto come flag `enabled` del job scheduled.",
+      "L'iniezione del contesto di runtime (APP_NAME, MODE/env_prefix, PLATFORM) che i container ETL gia' si aspettano: mantenuta, cosi' le immagini esistenti girano senza modifiche al codice applicativo.",
+      "L'idea del filtro stack `disabled` (seme della modularita' on/off, findings §7): generalizzata in 'se il job non e' dichiarato non esiste' e nei flag per-job."
+    ],
+    "open_questions": "1) andriani gira ETL su c7g.4xlarge (16 vCPU/32 GB): rientra nel cap Fargate (16 vCPU/120 GB) come `size` esplicita, o e' un caso `compute: ec2`? Serve il dato di utilizzo reale (manca, come per CociProd). 2) I background-task del backend oggi sono sync o async? Solo gli async vanno su `kind: queue`; i sync brevi potrebbero restare nel backend o diventare `on-demand` invocati via RunTask. 3) Conferma definitiva che NESSUN account in produzione usa la factory Step Functions custom prima di rimuoverla (catalogo dice 0/24, ma verificare anche app.py non-infra). 4) Per i job che chiamano API esterne (es. export PST di prima-power, invio email ETL): quali servono `needs:[internet]` (PRIVATE_WITH_EGRESS) e quali bastano gli interface endpoints? Mappa per-cliente da fare. 5) Egress email: l'ETL `--send-etl-email` come invia (SMTP esterno vs SES)? Se SMTP esterno serve egress; se SES basta un interface endpoint. 6) Per i dev (domanda aperta residua in STATO.md): `min_consumers: 0` e schedule disabilitate di default per ridurre il floor, o si tiene parita' con prod?"
+  },
+  {
+    "key": "CONFIG",
+    "title": "Scheda config + composizione app-stack + naming",
+    "config_yaml": "## ────────────────────────────────────────────────────────────────────────\n## values.yaml — UNICA scheda del cliente (single source of truth).\n## Sostituisce dev.yaml + prod.yaml + app.py + i blocchi sparsi.\n## \"Contenuto utile\" totale di una repo infra ≈ queste righe. app.py è generato.\n## ────────────────────────────────────────────────────────────────────────\nschema_version: 2            # versione dello schema (per migrazioni future)\n\n# 1) IDENTITA' — un solo posto per customer/account/region.\nidentity:\n  customer: prima-power      # slug cliente, usato per naming e tag\n  domain_zone: app.laifgroup.com   # zona base per i domini derivati\n  accounts:                  # 1 account per ambiente (isolamento mantenuto)\n    dev:  { account_id: \"111111111111\", profile: prima-power-dev }\n    prod: { account_id: \"975707451837\", profile: LaifProd }\n  region: eu-west-1          # default org; override per-app se serve\n\n# 2) DEFAULTS — valgono per tutte le apps salvo override. Sicuri-by-default.\ndefaults:\n  monitoring: true           # CloudWatch->SNS->Wolico ingest (OBS) ON ovunque\n  db_private: true           # RDS PRIVATE_ISOLATED (ribalta il default rotto)\n  waf: true                  # WAFv2 attivo (era deployato 0/24)\n  multi_az: false            # raddoppia il costo RDS -> opt-in solo prod\n  autoscaling: false         # richiede ALB->ECS service; opt-in per-app\n  eip: false                 # niente IP pubblici sul workload (subnet private)\n  auto_turnoff: false        # spegnimento ECS+RDS; tipicamente ON nei dev\n\n# 3) APPS — cittadini di prima classe. Risolve 1-account/N-app (crif/prima/laif).\n#    Naming (stack id, dominio, bucket, secret) DERIVATO: niente '# CHANGE ME'.\napps:\n  # --- app principale ---\n  - name: prima-power        # -> stack id {env}-prima-power-stack, dominio prima-power.app.laifgroup.com\n    db:\n      name: prima_power\n      engine_version: \"17.6\"\n      multi_az: true         # override del default solo per questa app (prod)\n    compute:\n      instance_class: t4g.medium\n    flags:\n      autoscaling: true      # questa app scala (overide del default OFF)\n      waf: true\n    jobs:                    # modulo JOBS comporto SOLO se questa lista esiste\n      - name: inventory\n        kind: scheduled\n        size: medium         # -> Fargate 1vCPU/2GB (vedi tabella size del modulo JOBS)\n        schedule: \"cron(30 5 * * ? *)\"\n        command: \"run etl --steps LND --steps STG --steps TRN --steps PRS --run-type ALL --send-etl-email\"\n      - name: export-to-pst\n        kind: scheduled\n        size: small\n        schedule: \"cron(0 1 * * ? *)\"\n        command: \"run etl --steps EXP --run-type PRICING --send-etl-email\"\n        environments: [prod]   # questo job esiste solo in prod\n\n  # --- seconda app nello STESSO account (era prima_pilot_default_stack in app.py) ---\n  - name: prima-pilot        # -> {env}-prima-pilot-stack, prima-pilot.app.laifgroup.com\n    db:\n      name: prima_pilot\n      engine_version: \"15.7\"\n    flags:\n      auto_turnoff: true\n      waf: false             # esplicito: niente WAF su questa app\n    environments: [dev, prod]\n\n# 4) OVERRIDE PER AMBIENTE — solo i delta; il resto eredita da defaults/app.\nenvironments:\n  dev:\n    defaults: { auto_turnoff: true, waf: false }   # i dev: turnoff ON, WAF OFF\n  prod:\n    defaults: { multi_az_allowed: true }           # gate: multi_az consentito solo qui\n\n## ── Cos'altro NON serve più scrivere (tutto derivato per convenzione):\n## stack id, domain, bucket name, secret name, rds_identifier, certificate_arn\n## (cert DNS-validated dallo stack via TOOL-06), waf_acl_parameter_name, account_id\n## ripetuti, i 56 parametri del TemplateStack, il blocco lambda_rds_turnoff,\n## il blocco etl_stack copia-incollato, e l'intero app.py.",
+    "constructs": [
+      {
+        "name": "LaifConfig (pydantic model: Identity, Defaults, AppSpec, EnvOverrides)",
+        "role": "Carica e valida values.yaml in un modello tipizzato (schema_version, identity, defaults, apps[], environments). E' la SSOT in memoria: fail-fast con messaggi chiari se manca/contraddice un campo. Espone la lista risolta di AppSpec per l'ambiente target (merge defaults<-app<-env, filtro 'environments:'). Sostituisce il Settings/DevSettings/ProdSettings di laif-cdk.",
+        "key_params": "values_file=values.yaml (default, override -c values=) ; env (da -c env=, obbligatorio, DEV|PROD) ; schema_version (validato, mismatch->errore) ; strict=true (extra-field -> errore, NON 'extra=allow' come oggi: blocca i typo)"
+      },
+      {
+        "name": "Naming (helper di derivazione, puro/stateless)",
+        "role": "Centralizza TUTTE le convenzioni di naming derivate da (customer, env, app): stack_id, domain, bucket, secret, rds_identifier, log_group, tag. Elimina i '# CHANGE ME' e il drift dei nomi. Un solo posto da cui leggere 'come si chiama X'.",
+        "key_params": "stack_id={env}-{app}-stack ; domain={app}.{domain_zone} (override esplicito consentito) ; bucket={env}-{customer}-{app}-{purpose} ; secret={env}-{app}-db ; rds_id={env}-{app}-db ; tutti pure-functions, nessun default 'rotto'"
+      },
+      {
+        "name": "AppStack (composizione: il cuore di TOOL-08)",
+        "role": "UN solo Stack per app che COMPONE i moduli NET/DATA/COMPUTE/EDGE/OBS/JOBS in base ai flag risolti. Costruzione condizionale: se un modulo e' OFF non viene istanziato (nessuna risorsa, nessun 'disabled flag a posteriori'). Cabla i collegamenti tra moduli (es. OBS sottoscrive gli alarm di COMPUTE/DATA; JOBS riusa la VPC di NET). Riceve un solo oggetto: l'AppSpec risolto.",
+        "key_params": "app_spec (AppSpec risolto) ; env_name ; ordine modulo: NET sempre (foundation) -> DATA se db -> COMPUTE se backend/frontend -> EDGE se dominio -> OBS se monitoring=true -> JOBS se app ha 'jobs:'. Default sicuri ereditati: db_private, waf, monitoring tutti ON"
+      },
+      {
+        "name": "synth_all() / app.py generato (entrypoint)",
+        "role": "app.py diventa identico/generato per OGNI repo: 4 righe che fanno App()->LaifConfig.load()->for app_spec in config.apps_for(env): AppStack(...)->app.synth(). Itera sulla lista apps[] -> N stack nello stesso account SENZA copia-incolla (risolve crif/prima-power/laif). Applica i Tag (Customer/Environment) una volta sola.",
+        "key_params": "env da context (-c env=) ; auto-itera apps[] filtrando per 'environments:' ; nessun parametro hardcoded; il file e' versionato dal template ed e' upgradabile senza toccare i clienti"
+      }
+    ],
+    "defaults_flipped": [
+      "db_private: false (laif-cdk: RDS in subnet PUBLIC, publicly_accessible=true) -> true (RDS PRIVATE_ISOLATED, no EIP) — chiude il bloccante di sicurezza #6 del brief",
+      "waf: disabled:true ovunque (deployato 0/24) -> waf: true di default, opt-out esplicito — abilita NETSEC-04",
+      "monitoring: assente (zero alarm/SNS in tutta la libreria) -> monitoring: true di default (CloudWatch->SNS->Wolico ingest) — chiude brief #1",
+      "eip / IP pubblici sul workload: presenti (Fargate/EC2 con IP pubblico) -> eip: false di default (workload in subnet private) — abilita risparmio IPv4 COST-IPV4",
+      "extra='allow' su Settings (i typo nello yaml passano silenziosi) -> strict=true: campo sconosciuto = errore di validazione fail-fast",
+      "naming '# CHANGE ME' / id hardcoded in ogni yaml -> naming derivato per convenzione (stack id, domain, bucket, secret, rds_identifier)",
+      "due file dev.yaml + prod.yaml duplicati al byte -> un solo values.yaml con override per-ambiente (solo i delta)",
+      "multi-app = copia-incolla di TemplateStack(...) in app.py -> lista apps[] dichiarativa, app.py generato e identico",
+      "stack disabilitato = costruito e poi marcato 'disabled' / filtrato a valle -> stack semplicemente NON sintetizzato se il flag e' OFF (composizione, non flag a posteriori)"
+    ],
+    "feature_flags": [
+      {
+        "flag": "monitoring",
+        "default": "true",
+        "effect": "Compone il modulo OBS (CloudWatch alarm CPU/RAM/disco/RDS/5xx/UnHealthyHost + Container/Performance Insights -> SNS -> endpoint ingest Wolico). OFF: nessuna risorsa di osservabilita'."
+      },
+      {
+        "flag": "db_private",
+        "default": "true",
+        "effect": "DATA mette RDS in PRIVATE_ISOLATED (no egress, no EIP). OFF: solo per migrazione transitoria di un cliente legacy, mai raccomandato."
+      },
+      {
+        "flag": "multi_az",
+        "default": "false (gate: consentito solo in prod)",
+        "effect": "DATA crea RDS Multi-AZ (raddoppia il costo istanza). Validatore rifiuta multi_az:true in dev."
+      },
+      {
+        "flag": "autoscaling",
+        "default": "false",
+        "effect": "COMPUTE abilita auto_scale_task_count (target tracking). Richiede ALB->ECS service (SCALE-04); il validatore avvisa se autoscaling:true senza il pattern awsvpc/dynamic-port."
+      },
+      {
+        "flag": "waf",
+        "default": "true",
+        "effect": "EDGE associa WAFv2 (rate limit + managed rules, gia' in libreria). OFF: opt-out esplicito per app interne/pilota."
+      },
+      {
+        "flag": "eip",
+        "default": "false",
+        "effect": "Nega IP pubblici sul workload (subnet private). true solo per casi legacy che richiedono IP statico in uscita (allora serve egress dedicato)."
+      },
+      {
+        "flag": "jobs (presenza della lista 'jobs:')",
+        "default": "assente -> modulo JOBS non composto",
+        "effect": "Se l'app dichiara jobs:[...] viene composto il modulo JOBS (Fargate + EventBridge Scheduler + SQS per kind/size). Assente = zero risorse task (sostituisce etl_stack copia-incollato)."
+      },
+      {
+        "flag": "auto_turnoff",
+        "default": "false (true nei dev via override d'ambiente)",
+        "effect": "Compone la lambda di spegnimento ECS->0 + stop RDS (tag Auto-TurnOff). Tipicamente ON nei dev per risparmio (COST-RDS-DEV-TURNOFF)."
+      }
+    ],
+    "depends_on": [
+      "NET (networking): l'AppSpec risolto guida la creazione VPC + interface endpoints per-account (ECR api+dkr, Logs, Secrets, SSM, STS) e subnet PRIVATE_ISOLATED per RDS",
+      "DATA (RDS/S3): consuma db.* e i flag db_private/multi_az",
+      "COMPUTE (ECS backend/frontend): consuma compute.* e i flag autoscaling/eip",
+      "EDGE (CloudFront/ALB/WAF/cert+DNS): consuma domain derivato e il flag waf; il cert DNS-validated dallo stack dipende da laif-dns modulare (TOOL-07/TOOL-06)",
+      "OBS (monitoring): consuma il flag monitoring e gli output di COMPUTE/DATA per sottoscrivere gli alarm; endpoint ingest Wolico",
+      "JOBS (task/ETL): consuma la lista jobs[] (TASK-01)",
+      "Naming helper: usato da TUTTI i moduli per i nomi derivati (dipendenza interna del modulo Config stesso)"
+    ],
+    "implements": [
+      "TOOL-08",
+      "TOOL-05",
+      "TOOL-06",
+      "TOOL-07",
+      "SCALE-05",
+      "MON-01",
+      "MON-04",
+      "NETSEC-01",
+      "NETSEC-04",
+      "COST-RDS-DEV-TURNOFF",
+      "TASK-01",
+      "SCALE-07"
+    ],
+    "migration_notes": "ORDINE e RISCHI per migrare i ~24 clienti (la flotta e' clonata: si migra il pattern, non 24 casi). 1) PILOTA su un dev a basso rischio (es. people-dev o un nuovo cliente day-zero come greenenergy): scrivere il values.yaml a mano dai due file esistenti, generare app.py, fare `cdk diff` contro lo stato deployato e iterare finche' il diff e' solo additivo/atteso. 2) Fornire uno SCRIPT DI CONVERSIONE one-shot `laif infra migrate` che legge dev.yaml+prod.yaml+app.py del cliente e produce un values.yaml proposto + apps[] derivata (gestisce i blocchi noti: default_stack->apps[0], crif_stack/prima_pilot_default_stack->apps[1...], waf_stack->flags.waf, etl_stack->jobs[], lambda_rds_turnoff->auto_turnoff). Lo script e' BEST-EFFORT: il diff CDK e' l'autorita', non lo script. 3) PUNTO CRITICO di sequenza: i default ribaltati (db_private, waf, monitoring) cambiano risorse reali. La migrazione del Config NON deve coincidere con lo spostamento RDS in subnet privata (NETSEC-01 = replace dell'istanza, downtime/snapshot). Strategia: migrare PRIMA a values.yaml mantenendo i flag al valore ATTUALE del cliente (db_private:false dove oggi e' pubblico, waf:false, monitoring:true subito perche' e' solo additivo), poi in una PR separata flippare un flag alla volta con la sua finestra. 4) RISCHIO config-drift (caso Nivi: prod.yaml non riproduceva la prod): dopo la conversione, `cdk diff` su prod DEVE essere vuoto o spiegabile; se non lo e', la repo non riproduceva la realta' -> riconciliare a mano prima di adottare il nuovo Config. 5) Il vincolo \"1 infra + 2 repo progetto\" (crif/prima-power/laif) si risolve mettendo entrambe in apps[] dello stesso values.yaml: nessun account condiviso, nessun app.py forkato. 6) Pinnare il nuovo CDK a tag (TOOL-05) e aggiornare il template a monte: i clienti ricevono il nuovo app.py generato senza toccarlo. ROLLBACK: finche' il diff e' vuoto, si puo' tornare al vecchio app.py/yaml senza toccare risorse.",
+    "preserve": [
+      "I default RDS buoni (storage_encrypted, deletion_protection, RemovalPolicy.RETAIN, backup>=14gg, GP3 autoscaling) restano i default del modulo DATA e NON sono esposti come flag da spegnere (sicuri-by-default, non opzionali)",
+      "image_scan_on_push=True su ECR (default DATA/COMPUTE, non flag)",
+      "Il seme della modularita' on/off gia' presente in laif-cdk (il filtro stack 'disabled' in app.py) viene PROMOSSO da workaround a meccanismo di prima classe: lo stack disabilitato non viene sintetizzato",
+      "L'idea di config-driven via YAML + caricamento pydantic (Settings) di laif-cdk e' buona: si conserva l'approccio pydantic ma con strict=true e un solo file",
+      "WAFv2 con rate limit + 5 managed rules (gia' in libreria, ben fatto): diventa il comportamento di default quando waf:true",
+      "CloudFront PriceClass_100 + REDIRECT_TO_HTTPS e i default sensati con validatori pydantic del modulo Glue: pattern di validazione da riusare in LaifConfig"
+    ],
+    "open_questions": "1) GERARCHIA DI OVERRIDE: confermare la precedenza defaults < app.flags < environments[env].defaults < app.environments-specific. Serve una regola d'oro unica e documentata per evitare sorprese (es. un flag ON di default che un cliente vuole OFF solo in dev). 2) UN values.yaml PER REPO vs MONO-REPO: il design assume 1 values.yaml per repo infra cliente (con apps[] interna). Se in futuro si vuole un solo repo infra per tutta la flotta, lo schema regge (lista customers[]) ma la decisione strategica e' aperta. 3) DEV ISOLATION (domanda aperta gia' in STATO.md): se i dev potranno alleggerire l'isolamento, il blocco identity.accounts dovra' ammettere un account dev condiviso tra piu' customer -> impatta il naming (collisione tra app di clienti diversi nello stesso account). Per ora assunto: isolamento anche dev. 4) Validazione SEMANTICA cross-modulo: dove vive il controllo 'autoscaling:true richiede SCALE-04' o 'multi_az solo prod' — in LaifConfig (fail-fast) o nei moduli? Proposta: validatori 'soft' (warning) in LaifConfig, 'hard' (errore) nel modulo che possiede la risorsa. 5) REGION per-app: serve davvero override region per singola app, o region resta sempre a livello identity? (oggi tutta la flotta e' eu-west-1 salvo il WAF us-east-1 che e' un dettaglio interno a EDGE, non un override cliente).",
+    "module": "Config & composizione (laif_cdk.config) — la scheda values.yaml SSOT + composizione dell'app-stack",
+    "purpose": "E' il collante della nuova libreria: una UNICA scheda values.yaml come single-source-of-truth (oggi le stesse info vivono in >=5 posti — dev.yaml, prod.yaml, app.py copia-incollato, ARN/id hardcoded, blocchi *_stack duplicati). Risolve i problemi del brief #5 (laif-cdk sporco/ridondante) e #2/#3/#6 abilitando i feature flag sicuri-by-default, e implementa TOOL-08. Modella la lista apps:[...] come cittadino di prima classe, risolvendo il caso 1-account/N-app (crif, prima-power, laif) senza forkare app.py. Deriva tutto il naming per convenzione (stack id={env}-{app}-stack, dominio, bucket, secret) eliminando i '# CHANGE ME'. Comporre l'AppStack significa istanziare i moduli NET/DATA/COMPUTE/EDGE/OBS/JOBS SOLO se il relativo flag e' ON: lo stack disabilitato non viene sintetizzato (non e' un flag a posteriori). Obiettivo dichiarato e raggiunto: il contenuto utile di una repo infra scende a ~15 righe di YAML con app.py identico/generato, abilitando la modularita' on/off del brief (autoscaling, monitoring, db_private, multi_az, waf, eip, jobs, auto_turnoff)."
+  },
+  {
+    "key": "REPO",
+    "title": "Strategia repo + tooling + OIDC/CI + packaging",
+    "config_yaml": "## Una sola \"scheda\" (SSOT) per cliente → genera SIA infra SIA pipeline app. Vive nella repo APP.\n## File: laif.yaml (root della repo di progetto). TOOL-08: questa scheda sostituisce values.yaml + dev/prod.yaml + GH vars + laif-dns + SSM scattered.\n\nschema_version: 2            # nuova libreria CDK; il packaging rifiuta schema < 2 (no deploy \"vecchio flusso\" su nuovo CDK)\ncustomer: casartelli         # codice cliente (slug). Naming derivato da qui.\n\n# --- pinning della libreria infra (TOOL-05): obbligatorio, niente HEAD floating ---\nlaif_infra:\n  source: codeartifact       # codeartifact | git   (default codeartifact; git solo bootstrap/fallback)\n  version: \"2.3.0\"           # PIN ESATTO. Vietato range/HEAD: il deploy fallisce se assente o \"latest\".\n\n# --- ambienti: identita' per-account (isolamento mantenuto, niente VPC condivisa) ---\nenvironments:\n  dev:\n    account_id: \"111111111111\"\n    profile: casartelli-dev\n    region: eu-west-1\n  prod:\n    account_id: \"222222222222\"\n    profile: casartelli-prod\n    region: eu-west-1\n\n# --- OIDC GitHub->AWS (TOOL-04 / NETSEC-06): nessuna access key statica, nessun GH_TOKEN ---\nci:\n  oidc: true                          # default ON. Il role di deploy e' CDK-owned (vedi modulo iam-cicd)\n  deploy_role_arn_ssm: /laif/cicd/deploy_role_arn   # risolto a runtime da SSM (output dello stack), non incollato a mano\n  github_repo: laif-group/casartelli  # per la condition sub del trust dell'OIDC role\n  reusable_workflow: laif-group/laif-infra-workflows/.github/workflows/infra.yml@v2  # TOOL-03 reusable centralizzato pinnato\n\n# --- lista app: risolve \"1 infra + N app sullo stesso account\" SENZA fork di app.py (TOOL-08) ---\n# (sostituisce i blocchi TemplateStack duplicati di crif/prima-power/laif: §6 analisi/05)\napps:\n  - name: analyzer            # naming derivato: stack=dev-analyzer-stack, domain=analyzer[-dev].app.laifgroup.com\n    backend: { autoscaling: false, monitoring: true }   # feature flag risolti dal modulo backend (altro modulo)\n    db: { private: true }                                # PRIVATE_ISOLATED by default (altro modulo)\n  - name: pilot\n    db: { private: true }\n\n# --- DNS+cert nello stack (TOOL-06): niente doppio deploy, niente DISTRIBUTION_ID a mano ---\ndns:\n  managed: true               # cert ACM DNS-validated dallo stack + record applicativi via laif-dns API/delega (TOOL-07)\n  zone_delegation: per_customer   # zona casartelli.app.laifgroup.com delegata all'account cliente (NS in laif-dns una volta)\n",
+    "constructs": [
+      {
+        "name": "ToolingConvention (modulo `tooling`)",
+        "role": "Non e' un construct CDK di risorse: e' il modulo che incapsula CONVENZIONE + glue di processo. Espone il loader/validatore della scheda `laif.yaml` (pydantic), il naming derivato (stack/dominio/bucket/role), e i synthesizer che traducono la scheda nei moduli CDK. E' il punto unico che decide *cosa* viene sintetizzato (feature flag) e con quale versione (pin).",
+        "key_params": "schema_version (richiesto, ==2, blocca il vecchio flusso); strict_naming=True (deriva tutto, vieta i campi liberi `# CHANGE ME`); fail_on_unpinned_lib=True (rifiuta source git senza tag e qualsiasi `latest`)."
+      },
+      {
+        "name": "CicdOidcRole (modulo `iam-cicd`)",
+        "role": "TOOL-04/NETSEC-06: IAM Role assunto via GitHub OIDC provider (token.actions.githubusercontent.com) al posto delle access key statiche. Sostituisce `init project` imperativo (utente IAM + access key nei GH secrets) e il `GH_TOKEN` passato a voce. Pubblica l'ARN come CfnOutput + SSM param letto dal workflow.",
+        "key_params": "github_repo (richiesto, usato nella `sub` condition: `repo:laif-group/<repo>:*`); allow_branches=['main','develop'] (default, restringe l'OIDC ai branch di deploy); managed_policy=least-priv per ambiente (NO `ecr:* ecs:* s3:* su *` — scoped agli ARN dell'app); rotate=N/A (nessuna chiave da ruotare). Default ON."
+      },
+      {
+        "name": "GithubOidcProvider (modulo `iam-cicd`, shared)",
+        "role": "OIDC identity provider per-account (uno, condiviso da tutti i CicdOidcRole dell'account). Creato una volta per account, idempotente (lookup-or-create).",
+        "key_params": "thumbprint=gestito da AWS (provider IAM OIDC moderno, no thumbprint manuale); audience=sts.amazonaws.com."
+      },
+      {
+        "name": "AcmDnsValidatedCert (modulo `dns`)",
+        "role": "TOOL-06: certificato ACM con DNS validation creato DENTRO lo stack (region us-east-1 per CloudFront via cross-region ref o stack us-east-1 dedicato), piu' i record applicativi. Elimina il doppio deploy `deploy_services:false->true`, il cert ARN incollato a mano e il `VALIDATION_TIMED_OUT` terminale.",
+        "key_params": "domain derivato dal naming (no ARN incollato); validation=DNS automatica sulla zona delegata; on_event=auto-crea i record di validazione via la zona Route53 dell'account (non in laif-dns monolite)."
+      },
+      {
+        "name": "DnsZoneDelegation (modulo `dns`, TOOL-07)",
+        "role": "Rende laif-dns MODULARE: una zona `<customer>.app.laifgroup.com` delegata UNA VOLTA all'account cliente (record NS nel monolite laif-dns). Dopo la delega, tutti i record applicativi/cert li scrive lo STACK del cliente nella propria Route53 (CDK-owned), non piu' PR a mano sul `prod.yaml` da 1705 righe. laif-dns resta solo per le deleghe (poche righe per cliente) e i domini apex.",
+        "key_params": "delegation_mode=per_customer (default) | central_record (fallback per chi non puo' delegare); ttl=300; in_place_update=True (la modifica di un record e' un cdk diff, non rimuovi-deploy-riaggiungi)."
+      },
+      {
+        "name": "InfraPipeline (reusable GH workflow, TOOL-03 — vive in laif-infra-workflows, NON in CDK)",
+        "role": "Workflow riusabile CENTRALIZZATO (0/24 oggi hanno CI infra): su PR fa `cdk diff` e lo posta come commento; su merge fa `cdk deploy --require-approval never` con OIDC. Un solo file versionato+pinnato (`@v2`), referenziato da ogni repo via 3 righe — niente piu' 2xN workflow duplicati in drift.",
+        "key_params": "trigger: pull_request->diff, push(main/develop)->deploy; runner=runner GitHub-hosted pinnato (ubuntu-24.04) o ARM_Runner solo se serve build (NO: la build app e' altro workflow); auth=OIDC (permissions: id-token:write); uv per la toolchain pinnata (sostituisce il container deployer)."
+      },
+      {
+        "name": "Toolchain pin (uv + .github/workflows, TOOL-01 — config, non construct)",
+        "role": "Elimina laif-deployer (Docker 764MB emulato amd64 su Mac ARM, 2 submodule non pinnati, catena di rilascio a 3 repo). La toolchain (python/node/cdk/awscli) e' dichiarata in `pyproject.toml`+`uv.lock` (locale, `uv sync`) e nel runner pinnato (CI). Stesse versioni a tutti, zero container.",
+        "key_params": "python='3.12'; aws-cdk pin in package.json (no `^2.254` flottante); uv.lock committato (riproducibilita')."
+      }
+    ],
+    "defaults_flipped": [
+      "Pin della libreria infra OBBLIGATORIO: oggi 0/24 repo pinnano (3 URL git diversi, 1 rotto su benozzi `github.org`). Nuovo default: `source: codeartifact` + `version` esatto; il loader RIFIUTA `latest`/HEAD e URL git senza tag. Build riproducibili, l'infra non cambia da sola al deploy successivo (TOOL-05).",
+      "Auth CI: da access key statiche IAM (policy `ecr:* ecs:* s3:*` su `*`, create da `init project`) a OIDC GitHub->AWS con role CDK-owned e policy least-privilege per-ambiente. Nessun `GH_TOKEN` passato a voce, nessuna chiave nei GH secrets, niente cap 2-access-key (TOOL-04/NETSEC-06).",
+      "Deploy infra: da 100% manuale dal laptop (laif-cli dentro il container deployer, SSO Administrator della persona, 0/24 con CI) a CI obbligatoria: `cdk diff` su PR + `cdk deploy` su merge via reusable workflow centralizzato. Audit trail e review by default (TOOL-03).",
+      "Cert/DNS: da ARN ACM incollato a mano + doppio deploy `deploy_services:false->true` + `DISTRIBUTION_ID` copiato a mano + 'primo deploy fallisce by design', a cert DNS-validated dallo stack + record CDK-owned nella zona delegata. Un solo deploy per ambiente (TOOL-06).",
+      "DNS: da monolite `laif-dns/prod.yaml` (1705 righe, 207 CNAME, PR approvata a mano, no modifica in-place) a delega di zona per-cliente: laif-dns tiene solo i record NS di delega (poche righe/cliente); i record applicativi sono `cdk diff` nello stack del cliente (TOOL-07).",
+      "Toolchain: da container Docker laif-deployer (764MB, emulato su Mac ARM, submodule non pinnati, rilascio a 3 repo) a `uv` locale + runner GitHub pinnati (TOOL-01).",
+      "Scheda di config: da 5 posti scollegati (values.yaml, dev/prod.yaml, GH env vars, laif-dns/prod.yaml, SSM) a `laif.yaml` unica SSOT con `apps:[]` e feature flag (TOOL-08).",
+      "Sistema a plugin di laif-cli (import a runtime di comandi da `./laif_cli/commands/` nella cwd): ELIMINATO. Comandi per-progetto = script versionati nella repo, non magia di import (TOOL-02)."
+    ],
+    "feature_flags": [
+      {
+        "flag": "ci.oidc",
+        "default": "true",
+        "effect": "ON: il deploy CI assume il role via OIDC (zero chiavi). OFF: fallback temporaneo a profilo SSO locale per il bootstrap del primissimo account (prima che il role esista). Mai OFF a regime."
+      },
+      {
+        "flag": "laif_infra.source",
+        "default": "codeartifact",
+        "effect": "codeartifact: installa la libreria pinnata dal registry privato (CodeArtifact). git: installa da tag git (solo bootstrap/offline). In entrambi i casi `version` e' obbligatorio: nessun HEAD."
+      },
+      {
+        "flag": "dns.managed",
+        "default": "true",
+        "effect": "ON: cert ACM + record DNS gestiti dallo stack (un solo deploy). OFF: modalita' legacy compat (cert ARN fornito a mano in `environments.*.certificate_arn`) per migrare clienti non ancora delegati senza bloccarli."
+      },
+      {
+        "flag": "dns.zone_delegation",
+        "default": "per_customer",
+        "effect": "per_customer: zona delegata all'account cliente, record CDK-owned. central_record: i record restano nel laif-dns centrale via la sua API (per clienti su account terzi tipo jubatus dove non controlliamo la zona)."
+      },
+      {
+        "flag": "ci.reusable_workflow",
+        "default": "laif-group/laif-infra-workflows/.../infra.yml@v2",
+        "effect": "Pin del workflow riusabile centralizzato. Cambiando il tag si aggiornano TUTTE le repo in un colpo (vs i 2xN workflow duplicati di oggi). Override per repo solo in deroga motivata."
+      },
+      {
+        "flag": "tooling.strict_naming",
+        "default": "true",
+        "effect": "ON: stack/dominio/bucket/role derivati da customer+app (vieta i campi liberi e i `# CHANGE ME`). OFF: consente override espliciti per i casi storici gia' deployati con naming non standard (es. gmm bbm-digit) durante la migrazione."
+      }
+    ],
+    "depends_on": [
+      "modulo iam-cicd (CicdOidcRole/GithubOidcProvider) — e' parte di questo modulo ma e' un'unita' CDK a se: il deploy del role e' il PRIMO step (sblocca la CI prima di tutto il resto, TOOL-04 prima di TOOL-03)",
+      "modulo dns (AcmDnsValidatedCert + DnsZoneDelegation) — TOOL-06 dipende da TOOL-07 (la zona dev'essere scrivibile dallo stack prima di poter validare il cert via DNS automatico)",
+      "modulo networking (VPC + interface endpoints per-account) — l'OIDC role e il cdk deploy assumono l'isolamento per-account deciso da Simone; nessuna dipendenza da VPC condivisa",
+      "modulo backend/frontend/rds/jobs — questo modulo li ORCHESTRA via la scheda `apps:[]` ma non li implementa; espone solo naming+feature-flag resolution che loro consumano",
+      "laif (laif-factory) CLI — i comandi `laif init`/`laif deploy`/`laif dns`/`laif monitor` sono il front-end umano del modulo; ricollocano le 8 responsabilita' di analisi/02 §6",
+      "CodeArtifact (repository privato nell'account tooling/Production) — backend del packaging della libreria (TOOL-05)",
+      "Wolico — il monitoring CloudWatch->SNS->Wolico (decisione Simone #2) e' un altro modulo, ma `lcp`/Checkmk si ELIMINA qui dentro insieme a laif-cli (orfano #8 di TOOL-02 chiuso: Checkmk morto)"
+    ],
+    "implements": [
+      "TOOL-01",
+      "TOOL-02",
+      "TOOL-03",
+      "TOOL-04",
+      "TOOL-05",
+      "TOOL-06",
+      "TOOL-07",
+      "TOOL-08",
+      "NETSEC-06"
+    ],
+    "migration_notes": "DECISIONE REPO STRATEGY (motivata): infra DENTRO la repo di progetto (laif.yaml in root), NON repo `<cliente>-infra` separata. Motivi: (1) analisi/05 §7 prova che il contenuto utile di una repo infra e' ~15 righe di YAML e 10/24 app.py sono byte-identici — la repo separata e' un guscio che aggiunge solo un secondo posto da tenere allineato e un secondo flusso di deploy; (2) il vincolo '1 infra + N app stesso account' (crif/prima-power/laif) NON e' un motivo per repo separata: si risolve con la lista `apps:[]` nella scheda; (3) con account isolati (decisione Simone #1) non c'e' infra cross-progetto da condividere, quindi nessun motivo tecnico per separare; (4) infra+app nella stessa repo elimina il drift cert-ARN/DISTRIBUTION_ID/DNS tra due repo e abilita 'cdk diff su PR' nello stesso PR del codice. ECCEZIONE: i pochi clienti con 2 app SU REPO DIVERSE e stesso account (vincolo del brief) tengono `laif.yaml` in UNA delle due (o in una mini-repo `<cliente>-infra` di sole ~20 righe) che dichiara entrambe in `apps:[]` — la libreria gestisce N app, non N repo.\n\nSEQUENZA DI MIGRAZIONE (ordine vincolante, dal summary catalogo + analisi/02 §6 'l'ordine conta'):\n1) TOOL-05 (pin laif-cdk a tag, quick-win QW-E1) SUBITO sul vecchio CDK: ferma il rischio 'infra cambia da sola' e ripara l'URL rotto benozzi — fattibile prima di ogni redesign, zero dipendenze.\n2) TOOL-04/NETSEC-06 (OIDC): dichiarare GithubOidcProvider + CicdOidcRole in CDK PRIMA della CI. Rende le risorse CDK-owned → abilita il punto 6 (kill wipeout). Pilota su 1 cliente nuovo (es. il prossimo onboarding).\n3) TOOL-03 (CI infra): reusable workflow centralizzato, `cdk diff` su PR + deploy su merge via OIDC. Sostituisce il deploy dal laptop.\n4) TOOL-01 (kill laif-deployer): a valle di 2+3 la toolchain e' nel runner pinnato + uv locale → il container non serve. Eliminare i 2 submodule e la catena di rilascio a 3 repo.\n5) TOOL-02 (kill laif-cli): far convergere `laif` (laif-factory) sul NUOVO CDK — NON stabilizzare il branch feat/new-app-skill sul vecchio flusso (i 24 script automatizzano le assurdita': doppio deploy, primo-deploy-fallisce, DNS one-shot → andrebbero riscritti). Ricollocare le 8 responsabilita': #1 deploy→TOOL-03; #2 DNS/DISTRIBUTION_ID→TOOL-06; #3 cert ACM→TOOL-06; #4 scaffold→laif init (gia' fatto); #5 utente IAM→TOOL-04 OIDC; #6 wipeout→sparisce (cdk destroy, risorse CDK-owned); #7 retrieve-credentials→`aws ssm get-parameter`; #8 lcp/Checkmk→ELIMINATO (Checkmk morto, decisione Simone #2: monitoring su Wolico). Plugin-system NON riprodotto.\n6) TOOL-06+TOOL-07 (cert/DNS nello stack + laif-dns modulare): per ogni cliente delegare la zona `<customer>.app.laifgroup.com` UNA VOLTA (record NS in laif-dns), poi i record passano CDK-owned. Elimina il doppio deploy e il monolite come collo di bottiglia.\n7) TOOL-08 (scheda unica laif.yaml): collassare values.yaml+dev/prod.yaml+GH vars+SSM scattered nella SSOT con `apps:[]` e feature flag.\n\nRISCHI: (a) 'stabilizzare due volte' — il rischio #1 del summary: mergiare feat/new-app-skill sul vecchio CDK sarebbe sprecato. Mitigazione: congelare il branch, riusarne gli script idempotenti (verify/do, discover.sh) come modello ma ri-targettati sui nuovi contratti. (b) cert cross-account: la validazione DNS automatica richiede la zona delegata (TOOL-07) attiva — finche' un cliente non e' delegato, tenere `dns.managed:false` (cert ARN a mano) per non bloccarlo. (c) i clienti su account terzi (jubatus, eu-central-1) usano `dns.zone_delegation: central_record` perche' non controlliamo la loro Route53. (d) migrazione dell'auth: rimuovere le access key statiche solo DOPO che l'OIDC role e' verde su 2-3 deploy, mai prima (NETSEC-06 prima di staccare le chiavi). (e) re-platform della libreria: i clienti restano sul vecchio laif-cdk pinnato (TOOL-05) finche' non vengono migrati uno a uno al nuovo CDK — il pin garantisce che nel frattempo nessuno si muova da solo.\n\nPILOTA: il prossimo onboarding nuovo (Casartelli e' day-zero, deploy 10/06: candidato ideale) parte direttamente sul nuovo flusso (laif.yaml + OIDC + CI + cert nello stack), riducendo i ~21-37 passi manuali a: 1 PR con laif.yaml + 1 delega NS in laif-dns + merge. Validare end-to-end prima di toccare la flotta esistente.",
+    "preserve": [
+      "RemovalPolicy.RETAIN / deletion_protection sulle risorse stateful (RDS, bucket dati): il role OIDC least-priv NON deve poter cancellarle; il teardown resta un'azione esplicita e separata (findings §7)",
+      "Il SEME della modularita' on/off: il 'filtro stack disabled' di laif-cli (analisi/02 §7) diventa la risoluzione dei feature flag — lo stack/construct NON viene proprio sintetizzato se off, non disabilitato a posteriori",
+      "image_scan_on_push=True (ECR) e la disciplina dei tag immutabili (SCALE-08): la CI deve pushare per git-SHA, non `:latest` mutabile — abilita rollback puntuale e mitiga il config drift repo↔prod (caso Nivi)",
+      "L'idea della glue DNS/cert post-deploy (analisi/02 §7): NON ributtarla su un operatore ma automatizzarla nello stack (TOOL-06) — l'intento era giusto, l'esecuzione manuale no",
+      "Lo scheduled-downtime del monitoring (silenzia gli alert durante un deploy): buona pratica da preservare nel nuovo monitoring Wolico/CloudWatch, anche se Checkmk si elimina",
+      "Gli script idempotenti verify/do (exit 0=fatto/1=todo/2=parziale) e discover.sh della skill new-app: ottimo pattern di stato/resume — riusare il PATTERN ri-targettato sui nuovi contratti, non gli script attuali",
+      "`laif` (laif-factory) installato via `uv tool install` su host: e' gia' la direzione giusta (host, no container) — si conserva e ci si converge sopra (TOOL-02)"
+    ],
+    "open_questions": "1) CodeArtifact vs tag git puro per il packaging: CodeArtifact da' versioning/visibilita'/audit e immutabilita' delle release ma aggiunge un servizio e un costo (e auth per i runner); tag git pinnati sono zero-infra ma niente immutabilita' garantita. Raccomando CodeArtifact (account tooling/Production) ma serve OK di Simone sul costo/onboarding. 2) Repo strategy per i clienti con 2 APP su 2 REPO diverse stesso account: laif.yaml in una delle due repo, o mini-repo `<cliente>-infra` di ~20 righe? Propendo per mini-repo solo in quel caso specifico (evita di 'eleggere' una app come padrona dell'infra). 3) Delega di zona per-cliente (TOOL-07): fattibile per tutti i domini sotto `app.laifgroup.com`, ma per i clienti su account/domini terzi (jubatus eu-central-1) serve confermare che `central_record` via API laif-dns sia accettabile. 4) Timing del distacco delle access key statiche: confermare il numero di deploy verdi OIDC richiesti prima di rimuoverle (propongo 3). 5) Il runner ARM self-hosted (single point of failure per le build backend) resta per la build app o si migra a runner GitHub-hosted ARM nativi? Fuori scope di questo modulo (e' build app, non deploy infra) ma da decidere in parallelo perche' la CI infra non ne ha bisogno.",
+    "module": "tooling — Repo strategy, packaging/versioning, OIDC CI, cert/DNS-in-stack (TOOL-01..08 + NETSEC-06)",
+    "purpose": "Modulo trasversale di PROCESSO+CONVENZIONE della nuova libreria infra: definisce DOVE vive la config infra (repo strategy), COME si versiona/distribuisce la libreria (packaging pinnato), CHI puo' deployare (OIDC, no access key), e COME si deploya (CI con cdk diff/deploy), eliminando il tooling imperativo fuori da CloudFormation. Risolve i problemi del brief #5 (laif-cdk sporco/ridondante, da rifare modulare) e #6 (sicurezza, via OIDC NETSEC-06) e il vincolo 'tutto CDK-owned' della decisione tooling di Simone. Sostituisce il flusso attuale (24 repo guscio clonate, 0/24 con CI, deploy manuale dal laptop dentro il container laif-deployer da 764MB, access key statiche larghissime, cert/DNS a mano con doppio deploy e 'primo deploy fallisce by design', ~21-37 passi manuali per onboarding) con: scheda unica laif.yaml (SSOT) nella repo di progetto, libreria pinnata su CodeArtifact, role OIDC CDK-owned, reusable workflow centralizzato, cert+DNS nello stack, e laif-dns reso modulare via delega di zona. Implementa TOOL-01 (kill laif-deployer), TOOL-02 (kill laif-cli, ricolloca 8 responsabilita', elimina lcp/Checkmk morto), TOOL-03 (CI infra), TOOL-04/NETSEC-06 (OIDC), TOOL-05 (pin libreria), TOOL-06 (cert/DNS in-stack), TOOL-07 (laif-dns modulare), TOOL-08 (values.yaml SSOT)."
+  }
+]

@@ -5,8 +5,8 @@ tipo: progetto
 tag: [lavoro, laif]
 stato: attivo
 creato: 2026-06-08
-aggiornato: 2026-06-10
-fonti: ["Notion DB Progetti", "intervista /avvio 2026-06-08", "approfondimento riunioni 11/05 (Notion) 2026-06-09"]
+aggiornato: 2026-06-15
+fonti: ["Notion DB Progetti", "intervista /avvio 2026-06-08", "approfondimento riunioni 11/05 (Notion) 2026-06-09", "riunioni 11-12/06 (test live ARCA)", "sync 15/06 + conferma Simone 2026-06-15"]
 correlati:
   - "[[Simone Brigante]]"
   - "[[Team Blue]]"
@@ -64,12 +64,25 @@ App preesistente Andriani con un tab "ordini" (ordini storici importati), da rin
 - **Aggiornamento gamme da tabella** configurato; due divergenze coi dati ARCA emerse il 9/06: **codici cliente mancanti** (disallineamento dev/prod, clienti inseriti di recente) e **listini cliente non aggiornati** → se ne parla al **SAL di venerdì 12/06**.
 - In validazione (12/06, Monni): conferma ordini automatici via mail, gestione gamme, import gamme da Excel; (Tancredi): parsing ordini Excel, multi-PDF per mail. In attesa cliente: import automatico ordini via API "Mercadona".
 
+## Aggiornamenti (11-12/06)
+- **Test live riuscito 12/06**: ordine **GS/Carrefour** inviato ad **ARCA con successo** durante la call.
+- **Regola decisa**: prodotti **in gamma ma NON a listino → non ordinabili** (messaggio/blocco finché il listino non è aggiornato in ARCA).
+- **NUOVO requisito di sicurezza**: **MFA** (richiesto dal referente IT **Luigi**); minimo **HTTPS + MFA**, possibile **SSO Microsoft**. Oggi solo user/password su AWS.
+- **~15 agenti diretti** in arrivo come utenti; **demo in sede mercoledì prossimo**. **Mercadona**: filone API aperto ma **non prioritario**.
+
+## Aggiornamenti (15/06)
+- **MFA: depriorizzato.** L'**SSO è già presente**; l'MFA è considerato **non prioritario** (placeholder al 10/07) — molto probabilmente **non si farà** salvo richiesta esplicita di Luigi Di Lauro. *(Ribalta il "requisito MFA" dell'11-12/06.)*
+- **Funzionalità pronte**: "se domani dicessero andiamo in produzione, le funzionalità ci sono"; manca solo test/validazione. Il **cliente non sta testando** → piano di sessioni di test guidate (anche in call) + valutazione **trasferta in sede (Gravina, Puglia)**. Demo recente andata bene.
+- **Problema aperto**: un codice articolo presente nel listino cliente non viene ricevuto (riprodotto anche via API ARCA diretta) → chiarimento col cliente in corso.
+- **Temi tecnici**: serve un **job schedulato (~15 min)** per fetch email + sync dati ARCA (oggi manuale via admin); l'**export ordini in ARCA è sincrono e lento** (API ARCA sincrone, ordine per ordine) → da rendere asincrono lato FE; export comunque **manuale e consapevole** per scelta (l'utente approva ogni invio).
+- **Vincolo di pianificazione**: [[Lorenzo Monni]] in **ferie 8-19 luglio**; obiettivo chiudere il grosso del testing prima.
+
 ## Referenti cliente
-- **Luigi Di Lauro** (l.dilauro@andrianispa.com) — responsabile del progetto lato cliente (è chi ha chiesto il Gantt).
+- **Luigi** — **IT / sicurezza** (ha richiesto MFA); plausibilmente Luigi Di Lauro (l.dilauro@andrianispa.com), responsabile del progetto lato cliente / richiedente Gantt.
+- **Dino** — **invio ordini** (gestione ordini Italia, verifica/conferma).
+- **Leda** — **ordini esteri / email-PDF** (+ portale **Mercadona**); rientra **lunedì**.
 - **Luigi Scaltrito** (l.scaltrito@andrianispa.com) — IT.
 - **Domenico Rizzi** (d.rizzi@andrianispa.com) — area ARCA / ordini. *Nota: esistono due "Rizzi" lato Andriani (uno referente ARCA, uno sugli ordini Italia).*
-- **Dino** — gestione **ordini Italia** (verifica/conferma gli ordini); plausibilmente uno dei due Rizzi.
-- **Leda** — gestione **ordini estero** + portale **Mercadona**.
 - **Lucia** — area **commerciale / gamma** articoli.
 
 ## Glossario di dominio (Andriani)
